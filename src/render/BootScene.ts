@@ -7,22 +7,12 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // Backgrounds per age — fallback to bg_game if a file is missing.
-    const asset = (name: string): string => `${import.meta.env.BASE_URL}${name}`;
-    this.load.image('bg_stone', asset('bg_stone.jpg'));
-    this.load.image('bg_medieval', asset('bg_medieval.jpg'));
-    this.load.image('bg_modern', asset('bg_modern.jpg'));
-    this.load.image('bg_game', asset('bg_game.jpg'));
+    // Gameplay art is generated locally. No raster backgrounds or sprite sheets
+    // are imported, so the entire scene shares the same pixel grid and palette.
   }
 
   create(): void {
     generateTextures(this);
-    // Create a 1×1 transparent placeholder texture for missing UI icons.
-    const g = this.make.graphics({ x: 0, y: 0 }, false);
-    g.fillStyle(0xffffff, 0);
-    g.fillRect(0, 0, 1, 1);
-    g.generateTexture('__DUMMY', 1, 1);
-    g.destroy();
     this.scene.start('GameScene');
   }
 }

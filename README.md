@@ -17,7 +17,7 @@ A lightweight, single-lane RTS played directly in your browser. March your army 
 - **Veterancy Progression**: Units gain kills on the field. Promoted units earn rank chevrons (+25%/+55% damage, +15%/+30% HP, +6% speed) and an instant HP top-up.
 - **In-Age Upgrades**: Spend gold on the **Forge** (`U`, +15% DMG per rank) and **Armor** (`Y`, +15% HP per rank). 3 ranks per age. Multipliers stack multiplicatively with veterancy.
 - **CrazyGames SDK v3 Integration**: Built-in `gameplayStart()`, `gameplayStop()`, `happytime()` triggers, interstitial midgame ads on match restart, and a `🎁 +100g` rewarded ad button.
-- **Voice Announcer & Procedural Chiptune Audio**: Self-contained Web Audio chiptune sequencer (bass + lead + drums) + one-shot SFX + announcer voice callouts with Web Speech API fallback. Press **M** to mute.
+- **Voice Announcer & Procedural Chiptune Audio**: Self-contained Web Audio chiptune sequencer (bass + lead + drums) + one-shot SFX + age-synced radio-filtered announcer voice with Web Speech API fallback. Press **M** to mute.
 - **100% Procedural Pixel Art**: Units, bases, projectiles, particles, and flags are drawn procedurally at runtime in `src/render/textures.ts`. Zero bulky sprite sheets, keeping the bundle fast and lightweight.
 - **Headless Bot Self-Play**: Run CI balance matches via `npm run sim`.
 
@@ -65,7 +65,7 @@ src/
 │  ├─ rng.ts                   # Mulberry32 PRNG + rehydratable RNG wrapper
 │  └─ sim.ts                   # Fixed-tick combat, targeting, pathing, AI
 └─ render/
-   ├─ BootScene.ts             # Loads backgrounds and generates runtime textures
+   ├─ BootScene.ts             # Generates runtime textures; no raster gameplay art
    ├─ GameScene.ts             # Render loop, particle emitters, screen shake, input
    ├─ Hud.ts                   # Responsive HUD (HP bars, buttons, gold, XP, ads)
    ├─ textures.ts              # Procedural vector/pixel canvas textures
@@ -73,8 +73,7 @@ src/
 public/
 ├─ banner.jpg                  # 16:9 CrazyGames portal banner art
 ├─ icon.jpg                    # 1:1 game icon & favicon
-├─ voice/                      # Announcer voice WAV audio callouts
-└─ bg_*.jpg                    # Per-age panoramic battlefield backgrounds
+└─ voice/                      # Announcer voice WAV audio callouts
 test/                          # Vitest suite (sim logic + golden determinism replays)
 scripts/
 ├─ sim-match.ts                # Headless bot-vs-bot runner
@@ -120,8 +119,8 @@ The game is strictly deterministic. The Mulberry32 PRNG state is preserved and r
 ## Assets
 
 - **Banner & Icon:** 16:9 CrazyGames portal banner and 1:1 favicon / app icon.
-- **Backgrounds:** Panoramic pixel-art battlefield per civilization (stone, medieval, modern).
-- **Units, bases, flags, projectiles, particles, UI crests & icons:** Drawn procedurally at boot with Phaser Graphics in `src/render/textures.ts` — 0 KB external sprite overhead, no sprite sheets needed.
+- **Battlefield:** Per-age pixel landscapes are drawn procedurally at runtime; no raster backgrounds or sprite sheets are loaded.
+- **Units, bases, flags, projectiles, particles, UI crests & icons:** Drawn procedurally at boot with Phaser Graphics in `src/render/textures.ts` on a strict 2× texel grid.
 - **Audio:** Web Audio chiptune synthesizer (`src/audio/audio.ts`) + announcer voice callouts with Web Speech API fallback (`src/audio/voice.ts`).
 
 ## License

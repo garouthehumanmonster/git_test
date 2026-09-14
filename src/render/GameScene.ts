@@ -19,6 +19,7 @@ import {
 import { canEvolve, canSpawn, canUpgrade, createInitialState, tick } from '../sim/sim';
 import { Hud } from './Hud';
 import { ROLE_SIZES, unitKey } from './sprites';
+import { OUTLINE, PIXEL_SCALE, colorHex, paletteFor } from './palette';
 import { audio } from '../audio/audio';
 import { voice } from '../audio/voice';
 import {
@@ -44,7 +45,7 @@ interface UnitGfx {
   hpBarBg: Phaser.GameObjects.Rectangle;
   chev1: Phaser.GameObjects.Triangle;
   chev2: Phaser.GameObjects.Triangle;
-  flashTimer: number;
+  flashUntilMs: number;
   halfHeight: number;
   currentVet: number;
 }
@@ -62,7 +63,7 @@ export class GameScene extends Phaser.Scene {
   private hud!: Hud;
   private lane!: Phaser.GameObjects.Graphics;
   private laneAge: 'stone' | 'medieval' | 'modern' = 'stone';
-  private bgImage!: Phaser.GameObjects.Image;
+  private background!: Phaser.GameObjects.Graphics;
   private playerBase!: Phaser.GameObjects.Image;
   private speedMul = 1;
   private paused = false;
@@ -89,7 +90,6 @@ export class GameScene extends Phaser.Scene {
   private shakeOffsetY = 0;
   private hitStopMs = 0;
   private pendingIntents: Intent[] = [];
-  private bgAge: 'stone' | 'medieval' | 'modern' = 'stone';
 
   constructor() { super('GameScene'); }
 
@@ -112,71 +112,63 @@ export class GameScene extends Phaser.Scene {
     crazyGameplayStart();
     voice.play('battle_begins', 5000);
 
-    // Solid backdrop so nothing bleeds through as transparent checkers.
-    this.cameras.main.setBackgroundColor('#0b0918');
+    // The battlefield is also procedural. There are no raster backdrops to
+    // introduce a second texel density, checkerboard bleed, or mismatched art.
+    const startPalette = paletteFor(this.sim.player.age);
+    this.cameras.main.setBackgroundColor(colorHex(startPalette.dark));
+    this.background = this.add.graphics().setDepth(-2);
+    this.drawBackground(this.sim.player.age);
 
-    // Full-canvas solid fill in case the camera bg hasn't painted yet.
-    const fill = this.add.rectangle(0, 0, LANE_WIDTH, LANE_HEIGHT, 0x0b0918).setOrigin(0, 0).setDepth(-3);
-    void fill;
-
-    // Age-specific background, falling back to generic bg_game then flat color.
-    this.bgAge = this.sim.player.age;
-    const startBgKey = this.textures.exists(`bg_${this.bgAge}`) ? `bg_${this.bgAge}` : (this.textures.exists('bg_game') ? 'bg_game' : null);
-    if (startBgKey) {
-      this.bgImage = this.add.image(LANE_WIDTH / 2, LANE_HEIGHT / 2, startBgKey)
-        .setDisplaySize(LANE_WIDTH, LANE_HEIGHT).setDepth(-2).setAlpha(0.9);
-    } else {
-      // Dummy invisible placeholder so field is always assigned.
-      this.bgImage = this.add.rectangle(0, 0, 1, 1, 0).setVisible(false).setDepth(-2) as unknown as Phaser.GameObjects.Image;
-    }
-
-    this.stars = this.add.graphics();
-    this.drawStars();
+    this.stars = this.add.graphics().setDepth(-1);
+    this.drawStars(this.sim.player.age);
 
     this.lane = this.add.graphics();
     this.drawLane(this.sim.player.age);
 
-    // Bases — pick AI art if we have it, else procedural.
+    // Bases are all generated from the same age palette and pixel grid.
     this.playerBase = this.makeBase('player');
     this.aiBase = this.makeBase('ai');
 
-    this.playerFlag = this.add.image(PLAYER_BASE_X + 26, LANE_TOP - 4, 'flag_player').setOrigin(0, 0.5).setDepth(1);
-    this.aiFlag = this.add.image(AI_BASE_X - 26, LANE_TOP - 4, 'flag_ai').setOrigin(1, 0.5).setDepth(1).setFlipX(true);
+    const p = paletteFor(this.sim.player.age);
+    this.playerFlag = this.add.image(PLAYER_BASE_X + 26, LANE_TOP - 4, 'flag_stone_player')
+      .setOrigin(0, 0.5).setScale(PIXEL_SCALE).setDepth(1);
+    this.aiFlag = this.add.image(AI_BASE_X - 26, LANE_TOP - 4, 'flag_stone_ai')
+      .setOrigin(1, 0.5).setScale(PIXEL_SCALE).setDepth(1).setFlipX(true);
 
     // World-space HP bars above towers.
     const tbarW = 70, tbarH = 6;
-    this.add.rectangle(PLAYER_BASE_X, LANE_TOP - 8, tbarW, tbarH, 0x11111a, 0.9).setOrigin(0.5).setDepth(3);
-    this.playerBaseHpBar = this.add.rectangle(PLAYER_BASE_X - tbarW / 2, LANE_TOP - 8, tbarW, tbarH, 0x64b5f6).setOrigin(0, 0.5).setDepth(4);
-    this.add.rectangle(PLAYER_BASE_X, LANE_TOP - 8, tbarW, tbarH, 0, 0).setOrigin(0.5).setDepth(5).setStrokeStyle(1, 0x8ab4f8);
-    this.add.rectangle(AI_BASE_X, LANE_TOP - 8, tbarW, tbarH, 0x11111a, 0.9).setOrigin(0.5).setDepth(3);
-    this.aiBaseHpBar = this.add.rectangle(AI_BASE_X + tbarW / 2, LANE_TOP - 8, tbarW, tbarH, 0xef5350).setOrigin(1, 0.5).setDepth(4);
-    this.add.rectangle(AI_BASE_X, LANE_TOP - 8, tbarW, tbarH, 0, 0).setOrigin(0.5).setDepth(5).setStrokeStyle(1, 0xff8a80);
+    this.add.rectangle(PLAYER_BASE_X, LANE_TOP - 8, tbarW, tbarH, p.dark, 0.9).setOrigin(0.5).setDepth(3);
+    this.playerBaseHpBar = this.add.rectangle(PLAYER_BASE_X - tbarW / 2, LANE_TOP - 8, tbarW, tbarH, p.accent).setOrigin(0, 0.5).setDepth(4);
+    this.add.rectangle(PLAYER_BASE_X, LANE_TOP - 8, tbarW, tbarH, 0, 0).setOrigin(0.5).setDepth(5).setStrokeStyle(1, OUTLINE);
+    this.add.rectangle(AI_BASE_X, LANE_TOP - 8, tbarW, tbarH, p.dark, 0.9).setOrigin(0.5).setDepth(3);
+    this.aiBaseHpBar = this.add.rectangle(AI_BASE_X + tbarW / 2, LANE_TOP - 8, tbarW, tbarH, p.highlight).setOrigin(1, 0.5).setDepth(4);
+    this.add.rectangle(AI_BASE_X, LANE_TOP - 8, tbarW, tbarH, 0, 0).setOrigin(0.5).setDepth(5).setStrokeStyle(1, OUTLINE);
 
     // Particles
     this.particles = this.add.particles(0, 0, 'particle_circle', {
       lifespan: 320,
       speed: { min: 30, max: 110 },
-      scale: { start: 0.8, end: 0 },
+      scale: { start: PIXEL_SCALE, end: 0 },
       alpha: { start: 1, end: 0 },
       gravityY: 0,
       emitting: false,
     }).setDepth(6);
 
-    const smoke = (x: number): Phaser.Types.GameObjects.Particles.ParticleEmitterConfig => ({
+    const smoke = (x: number, tint: number): Phaser.Types.GameObjects.Particles.ParticleEmitterConfig => ({
       lifespan: 1500,
       speed: { min: 5, max: 16 },
-      scale: { start: 0.8, end: 2 },
+      scale: { start: PIXEL_SCALE, end: PIXEL_SCALE * 2 },
       alpha: { start: 0.35, end: 0 },
       gravityY: -14,
       emitting: false,
-      tint: 0x5a4a4a,
+      tint,
       angle: { min: 75, max: 105 },
       frequency: 380,
       x,
       y: LANE_TOP + 6,
     });
-    this.smokePlayer = this.add.particles(0, 0, 'particle_circle', smoke(PLAYER_BASE_X)).setDepth(2);
-    this.smokeAi = this.add.particles(0, 0, 'particle_circle', smoke(AI_BASE_X)).setDepth(2);
+    this.smokePlayer = this.add.particles(0, 0, 'particle_circle', smoke(PLAYER_BASE_X, p.body)).setDepth(2);
+    this.smokeAi = this.add.particles(0, 0, 'particle_circle', smoke(AI_BASE_X, p.highlight)).setDepth(2);
 
     // HUD
     this.hud = new Hud(this);
@@ -194,7 +186,7 @@ export class GameScene extends Phaser.Scene {
           this.sim.player.gold += 100;
           voice.play('reinforcements');
           audio.sfxGold();
-          this.addFloat(PLAYER_BASE_X + 40, LANE_TOP - 20, '+100g REWARD!', 0xffd166, 60);
+          this.addFloat(PLAYER_BASE_X + 40, LANE_TOP - 20, '+100G REWARD', paletteFor(this.sim.player.age).highlight, 60);
         },
         () => {
           this.rewardInFlight = false;
@@ -217,6 +209,7 @@ export class GameScene extends Phaser.Scene {
       this.audioStarted = true;
       await audio.init();
       audio.setMusicAge(this.sim.player.age);
+      audio.setVoiceAge(this.sim.player.age);
       audio.startMusic();
       audio.setMusicState('playing');
     };
@@ -397,48 +390,58 @@ export class GameScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- drawing
 
-  private drawStars(): void {
-    const g = this.stars; g.clear();
-    // Soft vignette, not a full overlay — per-age backgrounds should show through.
-    g.fillStyle(0x05030f, 0.25);
+  private drawBackground(age: 'stone' | 'medieval' | 'modern'): void {
+    const p = paletteFor(age);
+    const g = this.background;
+    g.clear();
+    g.fillStyle(p.dark, 1);
     g.fillRect(0, 0, LANE_WIDTH, LANE_HEIGHT);
+    g.fillStyle(p.panel, 1);
+    g.fillRect(0, 58, LANE_WIDTH, 72);
+    g.fillStyle(p.mid, 0.65);
+    for (let x = 0; x < LANE_WIDTH; x += 48) {
+      const height = 8 + ((x / 48) % 4) * 4;
+      g.fillRect(x, 116 - height, 32, height);
+    }
+    g.fillStyle(p.edge, 0.45);
+    for (let x = 0; x < LANE_WIDTH; x += 32) g.fillRect(x + 8, 84 + (x % 5) * 2, 8, 2);
+    g.fillStyle(p.accent, 0.28);
+    for (let x = 16; x < LANE_WIDTH; x += 72) g.fillRect(x, 64 + (x % 3) * 4, 2, 2);
+  }
+
+  private drawStars(age: 'stone' | 'medieval' | 'modern'): void {
+    const p = paletteFor(age);
+    const g = this.stars; g.clear();
+    g.fillStyle(p.dark, 0.24);
+    g.fillRect(0, 0, LANE_WIDTH, 58);
     let seed = 12345;
     const rng = () => { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) % 10000) / 10000; };
-    for (let i = 0; i < 110; i++) {
-      const x = rng() * LANE_WIDTH;
-      const y = rng() * (LANE_TOP + 10);
-      const size = rng() * 1.4 + 0.3;
-      g.fillStyle(0xffffff, 0.3 + rng() * 0.5);
-      g.fillCircle(x, y, size);
+    for (let i = 0; i < 72; i++) {
+      const x = Math.floor(rng() * (LANE_WIDTH / 2)) * 2;
+      const y = Math.floor(rng() * 56 / 2) * 2;
+      g.fillStyle(p.light, 0.35 + rng() * 0.45);
+      g.fillRect(x, y, 2, 2);
     }
-    g.fillStyle(0x0a071a, 0.7);
-    g.fillRect(0, 0, LANE_WIDTH, 60);
-    g.fillStyle(0x0a071a, 0.3);
-    g.fillRect(0, LANE_TOP - 12, LANE_WIDTH, 12);
+    g.fillStyle(p.dark, 0.5);
+    g.fillRect(0, 118, LANE_WIDTH, 12);
   }
 
   private drawLane(age: 'stone' | 'medieval' | 'modern'): void {
     this.laneAge = age;
+    const p = paletteFor(age);
     const g = this.lane; g.clear();
-    // Per-age palette for ground/path/edges
-    const palettes = {
-      stone:    { ground: 0x2a1f13, path: 0x4d3824, edge: 0x7a5a33, center: 0x8a6a40, spawnP: 0x3a5a8a, spawnA: 0x8a3a3a },
-      medieval: { ground: 0x17212e, path: 0x2d3f58, edge: 0x527199, center: 0x6f8cbf, spawnP: 0x2a4a8a, spawnA: 0x8a2a2a },
-      modern:   { ground: 0x0a181e, path: 0x153039, edge: 0x1f7a76, center: 0x38fff0, spawnP: 0x0e6079, spawnA: 0x7a1a22 },
-    } as const;
-    const p = palettes[age];
-    g.fillStyle(p.ground, 1);
+    g.fillStyle(p.mid, 1);
     g.fillRect(0, LANE_TOP, LANE_WIDTH, LANE_BOTTOM - LANE_TOP);
-    g.fillStyle(p.path, 1);
+    g.fillStyle(p.panel, 1);
     g.fillRect(0, LANE_TOP + 6, LANE_WIDTH, LANE_BOTTOM - LANE_TOP - 12);
     g.lineStyle(2, p.edge, 1);
     g.lineBetween(0, LANE_TOP + 2, LANE_WIDTH, LANE_TOP + 2);
     g.lineBetween(0, LANE_BOTTOM - 2, LANE_WIDTH, LANE_BOTTOM - 2);
-    g.lineStyle(1, p.center, 0.4);
+    g.lineStyle(1, p.accent, 0.45);
     for (let x = 0; x < LANE_WIDTH; x += 20) g.lineBetween(x, LANE_CENTER_Y, x + 10, LANE_CENTER_Y);
-    g.fillStyle(p.spawnP, 0.12);
+    g.fillStyle(p.edge, 0.18);
     g.fillRect(0, LANE_TOP, 96, LANE_BOTTOM - LANE_TOP);
-    g.fillStyle(p.spawnA, 0.12);
+    g.fillStyle(p.highlight, 0.18);
     g.fillRect(LANE_WIDTH - 96, LANE_TOP, 96, LANE_BOTTOM - LANE_TOP);
   }
 
@@ -452,7 +455,8 @@ export class GameScene extends Phaser.Scene {
       if (!g) {
         g = this.createUnitGfx(u);
         this.unitGfx.set(u.id, g);
-        this.particles.setParticleTint(u.side === 'player' ? 0x64b5f6 : 0xef5350);
+        const unitPalette = paletteFor(u.def.age);
+        this.particles.setParticleTint(u.side === 'player' ? unitPalette.accent : unitPalette.highlight);
         this.particles.emitParticleAt(u.x, LANE_CENTER_Y + u.yOffset + 4, 8);
       }
       this.updateUnitGfx(g, u);
@@ -480,29 +484,26 @@ export class GameScene extends Phaser.Scene {
     const key = this.textures.exists(unitKey(u.def.age, role))
       ? unitKey(u.def.age, role)
       : unitKey('stone', 'swarm');
-    const sprite = this.add.image(0, 0, key).setFlipX(u.dir === -1).setOrigin(0.5, 1);
-
-    // Compute scale to hit target on-screen height regardless of source texture size.
-    const srcH = sprite.frame?.realHeight ?? ROLE_SIZES[role].h;
     const targetH = UNIT_H[role];
-    const s = targetH / srcH;
-    sprite.setScale(s);
+    const sprite = this.add.image(0, 0, key).setFlipX(u.dir === -1).setOrigin(0.5, 0.5).setScale(PIXEL_SCALE);
 
-    // Very subtle side tint — just enough to read friend/foe without washing out art.
-    if (u.side === 'player') sprite.setTint(0xdcebff);
-    else sprite.setTint(0xffe4e4);
+    // Every source texture is authored at half resolution, so this scale is
+    // always exactly 2 and never introduces fractional texels.
+    const unitPalette = paletteFor(u.def.age);
+    sprite.setTint(u.side === 'player' ? unitPalette.light : unitPalette.accent);
 
-    // Shadow on ground
-    const shadowW = targetH * 0.9;
-    const shadow = this.add.ellipse(0, SHADOW_OFFSET_Y, shadowW, 4, 0x000000, 0.4).setOrigin(0.5, 1);
+    // The unit container is its visual centre. The shadow is pinned to the
+    // foot line (centre y + height / 2), not to the sprite's bob animation.
+    const shadow = this.add.ellipse(0, targetH / 2 + SHADOW_OFFSET_Y, targetH * 0.9, 4, 0x000000, 0.35).setOrigin(0.5, 0.5);
 
     // HP bar above the unit
     const hpW = Math.max(18, targetH * 0.9);
-    const hpBarBg = this.add.rectangle(0, -targetH - 6, hpW, 3, 0x000000, 0.7).setOrigin(0.5);
-    const hpBar = this.add.rectangle(-hpW / 2, -targetH - 6, hpW, 3, u.side === 'player' ? 0x64b5f6 : 0xef5350).setOrigin(0, 0.5);
+    const hpY = -targetH / 2 - 6;
+    const hpBarBg = this.add.rectangle(0, hpY, hpW, 3, unitPalette.dark, 0.9).setOrigin(0.5);
+    const hpBar = this.add.rectangle(-hpW / 2, hpY, hpW, 3, u.side === 'player' ? unitPalette.accent : unitPalette.highlight).setOrigin(0, 0.5);
 
     // Veterancy chevrons (hidden initially; shown when vet > 0).
-    const chevColor = 0xffd166;
+    const chevColor = unitPalette.light;
     const makeChev = (ox: number) => this.add.triangle(
       ox, -targetH - 10,
       -3, 0, 0, 4, 3, 0,
@@ -520,7 +521,7 @@ export class GameScene extends Phaser.Scene {
       ease: 'Back.easeOut',
     });
 
-    return { id: u.id, container, sprite, shadow, hpBar, hpBarBg, chev1, chev2, flashTimer: 0, halfHeight: targetH, currentVet: 0 };
+    return { id: u.id, container, sprite, shadow, hpBar, hpBarBg, chev1, chev2, flashUntilMs: 0, halfHeight: targetH, currentVet: 0 };
   }
 
   private updateUnitGfx(g: UnitGfx, u: UnitState): void {
@@ -537,6 +538,7 @@ export class GameScene extends Phaser.Scene {
     const targetY = LANE_CENTER_Y + u.yOffset;
     g.container.x += (targetX - g.container.x) * 0.4;
     g.container.y += (targetY - g.container.y) * 0.4;
+    g.shadow.y = g.halfHeight / 2 + SHADOW_OFFSET_Y;
 
     const walkPhase = (u.ageTicks + u.animSeed * 0.001) * 0.45;
     const h = g.halfHeight;
@@ -563,12 +565,13 @@ export class GameScene extends Phaser.Scene {
       g.sprite.y = 0; g.sprite.x = 0; g.sprite.angle = 0; g.container.angle = 0;
     }
 
-    if (g.flashTimer > 0) {
-      g.flashTimer--;
+    const unitPalette = paletteFor(u.def.age);
+    if (this.time.now < g.flashUntilMs) {
+      // Hit flash is time-based rather than frame-based: exactly 60ms at any
+      // render rate, then the original age/side tint is restored.
       g.sprite.setTint(0xffffff);
     } else {
-      // Re-apply side tint after flash
-      g.sprite.setTint(u.side === 'player' ? 0xdcebff : 0xffe4e4);
+      g.sprite.setTint(u.side === 'player' ? unitPalette.light : unitPalette.accent);
     }
 
     // HP bar — ratio vs current effective max (includes vet and armor upgrades).
@@ -578,16 +581,16 @@ export class GameScene extends Phaser.Scene {
     const ratio = Math.max(0, Math.min(1, u.hp / effMax));
     g.hpBar.width = hpW * ratio;
     g.hpBar.x = -hpW / 2;
-    if (ratio < 0.3) g.hpBar.setFillStyle(0xef5350);
-    else if (ratio < 0.6) g.hpBar.setFillStyle(0xffd166);
-    else g.hpBar.setFillStyle(u.side === 'player' ? 0x64b5f6 : 0xef5350);
+    if (ratio < 0.3) g.hpBar.setFillStyle(unitPalette.highlight);
+    else if (ratio < 0.6) g.hpBar.setFillStyle(unitPalette.accent);
+    else g.hpBar.setFillStyle(u.side === 'player' ? unitPalette.body : unitPalette.highlight);
 
     // Veterancy chevrons — show & color-shift by rank.
     if (u.vet !== g.currentVet) {
       g.currentVet = u.vet;
       g.chev1.setVisible(u.vet >= 1);
       g.chev2.setVisible(u.vet >= 2);
-      const vetColor = u.vet >= 2 ? 0x38fff0 : 0xffd166;
+      const vetColor = u.vet >= 2 ? unitPalette.body : unitPalette.light;
       g.chev1.setFillStyle(vetColor);
       g.chev2.setFillStyle(vetColor);
       // Pop animation on promotion.
@@ -607,17 +610,12 @@ export class GameScene extends Phaser.Scene {
       seen.add(p.id);
       let g = this.projGfx.get(p.id);
       if (!g) {
-        const color = p.side === 'player' ? 0x64b5f6 : 0xef5350;
+        const projectilePalette = paletteFor(p.age);
+        const color = p.side === 'player' ? projectilePalette.light : projectilePalette.highlight;
         const tex = `proj_${p.age}_ranged`;
-        const sprite = this.add.image(p.x, p.y, this.textures.exists(tex) ? tex : 'proj_spark').setDepth(4);
+        const sprite = this.add.image(p.x, p.y, this.textures.exists(tex) ? tex : 'proj_spark')
+          .setDepth(4).setScale(PIXEL_SCALE).setTint(color);
         if (p.side === 'ai') sprite.setFlipX(true);
-        sprite.setTint(color);
-        if (p.age === 'modern') sprite.setBlendMode(Phaser.BlendModes.ADD);
-        // Scale projectiles to small on-screen size regardless of source.
-        const srcW = sprite.frame?.realWidth ?? 6;
-        const targetW = p.age === 'modern' ? 10 : p.age === 'medieval' ? 12 : 6;
-        const sp = targetW / Math.max(1, srcW);
-        sprite.setScale(sp);
         const trailR = p.age === 'modern' ? 5 : 3;
         const trail = this.add.circle(p.x, p.y, trailR, color, 0.5).setDepth(3);
         audio.sfxArrow(p.age);
@@ -646,8 +644,9 @@ export class GameScene extends Phaser.Scene {
   private drainEvents(): void {
     for (const ev of this.sim.events) {
       if (ev.kind === 'hit') {
-        this.addFloat(ev.x, ev.y, `-${ev.damage}`, ev.color, 24);
-        this.particles.setParticleTint(ev.color);
+        const p = paletteFor(this.sim.player.age);
+        this.addFloat(ev.x, ev.y, `-${ev.damage}`, p.highlight, 24);
+        this.particles.setParticleTint(p.accent);
         this.particles.emitParticleAt(ev.x, ev.y + 4, 4);
         audio.sfxMeleeHit();
         this.hitStopMs = Math.max(this.hitStopMs, 20);
@@ -655,50 +654,55 @@ export class GameScene extends Phaser.Scene {
         for (const u of this.sim.units) {
           if (Math.abs(u.x - ev.x) < 6 && u.state !== 'die') {
             const g = this.unitGfx.get(u.id);
-            if (g) g.flashTimer = 3;
+            if (g) g.flashUntilMs = this.time.now + 60;
           }
         }
       } else if (ev.kind === 'baseHit') {
         const bx = ev.side === 'player' ? PLAYER_BASE_X : AI_BASE_X;
-        const color = ev.side === 'player' ? 0x64b5f6 : 0xef5350;
+        const basePalette = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
+        const color = basePalette.highlight;
         this.addFloat(bx, LANE_TOP + 12, `-${ev.damage}`, color, 22);
-        this.particles.setParticleTint(color);
+        this.particles.setParticleTint(basePalette.accent);
         this.particles.emitParticleAt(bx, LANE_BOTTOM - 20, 8);
         audio.sfxBaseHit();
         this.hitStopMs = Math.max(this.hitStopMs, 50);
         this.shake(150, ev.damage > 20 ? 5 : 3);
         if (ev.side === 'player') this.playerBaseFlash = 8; else this.aiBaseFlash = 8;
       } else if (ev.kind === 'death') {
-        this.particles.setParticleTint(ev.color);
+        const p = paletteFor(this.sim.player.age);
+        this.particles.setParticleTint(p.highlight);
         this.particles.emitParticleAt(ev.x, ev.y, 10);
         this.hitStopMs = Math.max(this.hitStopMs, 35);
         this.shake(80, 2);
       } else if (ev.kind === 'gold') {
+        const p = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
         this.addFloat(
           ev.side === 'player' ? PLAYER_BASE_X + 18 : AI_BASE_X - 18,
           LANE_TOP - 2,
-          `+${ev.amount}g`,
-          0xffd166,
+          `+${ev.amount}G`,
+          p.highlight,
           28,
         );
         if (ev.side === 'player') audio.sfxGold();
       } else if (ev.kind === 'upgrade') {
+        const p = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
         const label = ev.which === 'forge' ? 'FORGE' : 'ARMOR';
-        const color = ev.which === 'forge' ? 0xef5350 : 0x42a5f5;
+        const color = ev.which === 'forge' ? p.highlight : p.accent;
         this.addFloat(
           ev.side === 'player' ? PLAYER_BASE_X + 20 : AI_BASE_X - 20,
           LANE_TOP - 22,
-          `↑ ${label} ${'I'.repeat(ev.rank)}`,
+          `+ ${label} ${'I'.repeat(ev.rank)}`,
           color,
           50,
         );
         if (ev.side === 'player') audio.sfxEvolve();
       } else if (ev.kind === 'evolve') {
+        const p = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
         this.addFloat(
           ev.side === 'player' ? PLAYER_BASE_X + 18 : AI_BASE_X - 18,
           LANE_TOP - 14,
-          `↑ ${AGE_LABEL[ev.to]}`,
-          0xc7a6ff,
+          `+ ${AGE_LABEL[ev.to]}`,
+          p.light,
           60,
         );
         if (ev.side === 'player') {
@@ -711,18 +715,12 @@ export class GameScene extends Phaser.Scene {
               this.playerBase.setScale(s);
             }
           }
-          if (this.textures.exists(`bg_${ev.to}`) && ev.to !== this.bgAge) {
-            this.bgAge = ev.to;
-            this.tweens.add({
-              targets: this.bgImage, alpha: 0, duration: 250,
-              onComplete: () => {
-                this.bgImage.setTexture(`bg_${ev.to}`);
-                this.bgImage.setDisplaySize(LANE_WIDTH, LANE_HEIGHT);
-                this.tweens.add({ targets: this.bgImage, alpha: 0.9, duration: 350 });
-              },
-            });
-          }
+          this.drawBackground(ev.to);
+          this.drawStars(ev.to);
+          this.playerFlag.setTexture(`flag_${ev.to}_player`);
+          this.aiFlag.setTexture(`flag_${ev.to}_ai`);
           audio.setMusicAge(ev.to);
+          audio.setVoiceAge(ev.to);
           voice.play(ev.to === 'medieval' ? 'medieval_age' : 'modern_age');
           crazyHappytime();
         } else {
@@ -746,10 +744,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addFloat(x: number, y: number, text: string, color: number, ttl: number): void {
-    const hex = '#' + color.toString(16).padStart(6, '0');
     const t = this.add.text(x, y, text, {
-      fontFamily: 'monospace', fontSize: '11px', color: hex, fontStyle: 'bold',
-      stroke: '#000000', strokeThickness: 2,
+      fontFamily: 'monospace', fontSize: '11px', color: colorHex(color), fontStyle: 'bold',
+      stroke: colorHex(paletteFor(this.sim.player.age).dark), strokeThickness: 2,
     }).setOrigin(0.5).setDepth(8);
     this.floatingText.push(t);
     this.tweens.add({
@@ -772,15 +769,17 @@ export class GameScene extends Phaser.Scene {
     this.aiFlag.angle = Math.sin(t * 4 + Math.PI) * 8;
 
     const tbarW = 70;
+    const playerPalette = paletteFor(this.sim.player.age);
+    const aiPalette = paletteFor(this.sim.ai.age);
     const pRatio = Math.max(0, this.sim.player.baseHp) / BASE_HP;
     this.playerBaseHpBar.width = tbarW * pRatio;
     this.playerBaseHpBar.x = PLAYER_BASE_X - tbarW / 2;
-    this.playerBaseHpBar.setFillStyle(pRatio < 0.3 ? 0xef5350 : pRatio < 0.6 ? 0xffd166 : 0x64b5f6);
+    this.playerBaseHpBar.setFillStyle(pRatio < 0.3 ? playerPalette.highlight : pRatio < 0.6 ? playerPalette.accent : playerPalette.body);
 
     const aRatio = Math.max(0, this.sim.ai.baseHp) / BASE_HP;
     this.aiBaseHpBar.width = tbarW * aRatio;
     this.aiBaseHpBar.x = AI_BASE_X + tbarW / 2;
-    this.aiBaseHpBar.setFillStyle(aRatio < 0.3 ? 0xef5350 : aRatio < 0.6 ? 0xffd166 : 0xef5350);
+    this.aiBaseHpBar.setFillStyle(aRatio < 0.3 ? aiPalette.highlight : aRatio < 0.6 ? aiPalette.accent : aiPalette.highlight);
 
     const danger = 1 - Math.max(pRatio, aRatio);
     audio.setTension(danger * danger);
@@ -789,14 +788,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Tower tint per damage level
-    const towerLook = (img: Phaser.GameObjects.Image, ratio: number, flash: number) => {
+    const towerLook = (img: Phaser.GameObjects.Image, ratio: number, flash: number, p: ReturnType<typeof paletteFor>) => {
       if (flash > 0) img.setTint(0xffffff);
       else if (ratio > 0.6) img.clearTint();
-      else if (ratio > 0.3) img.setTint(0xc8a0a0);
-      else img.setTint(0x8a4040);
+      else if (ratio > 0.3) img.setTint(p.body);
+      else img.setTint(p.dark);
     };
-    towerLook(this.playerBase, pRatio, this.playerBaseFlash);
-    towerLook(this.aiBase, aRatio, this.aiBaseFlash);
+    towerLook(this.playerBase, pRatio, this.playerBaseFlash, playerPalette);
+    towerLook(this.aiBase, aRatio, this.aiBaseFlash, aiPalette);
 
     const pCrit = pRatio < 0.4, pDying = pRatio < 0.15;
     const aCrit = aRatio < 0.4, aDying = aRatio < 0.15;

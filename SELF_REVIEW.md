@@ -19,8 +19,13 @@ Resolved in this pass:
   measurements.
 - Master mute now silences music, SFX, and voice consistently; failed rewarded
   ads no longer grant free gold and duplicate ad callbacks are ignored.
-- Public assets use the configured Vite base path, so backgrounds and voice lines
-  work when the game is hosted below the domain root.
+- Public voice assets use the configured Vite base path, while gameplay
+  backgrounds are now generated in code and cannot bleed or 404.
+- Rebuilt gameplay art around a shared 2× texel grid, a strict per-age
+  eight-colour palette, one-pixel ink outlines, procedural landscapes, and
+  explicit ground-line shadows.
+- Routed announcer audio through a 300Hz–3.4kHz radio filter, 12-bit
+  waveshaper, and age-specific convolution reverb.
 
 ## Post-Audit Remediation (Resolved Delivery & Hygiene Debt)
 
@@ -37,7 +42,7 @@ Resolved in this pass:
 
 3. **CI & Automated Gates (Previously 7/10 → Now 9.5/10)**:
    - Added `.github/workflows/ci.yml` running on push & PR.
-   - Automates: `npm run typecheck`, `npm test` (20 tests), `npm run sim 25`, and `npm run build`.
+   - Automates: `npm run typecheck`, `npm test` (22 tests), `npm run sim 25`, and `npm run build`.
 
 4. **Docs, Hygiene & Discoverability (Previously 6/10 → Now 9.5/10)**:
    - Added MIT `LICENSE`.
@@ -47,6 +52,6 @@ Resolved in this pass:
 
 ## Quality Gates
 - TypeScript: clean (`tsc --noEmit` passes with 0 errors).
-- Tests: 20 passing (`vitest run` — unit, combat, transitions, RNG validation, and golden determinism).
+- Tests: 22 passing (`vitest run` — unit, combat, transitions, RNG validation, palette contract, and golden determinism).
 - Bundle: builds successfully (`vite build`, about 378 KB gzipped); Vite still reports a large-chunk warning because Phaser is bundled eagerly.
 - Balance: Headless self-play mirrors both sides' upgrade policy and is close to even across typical runs.

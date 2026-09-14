@@ -55,7 +55,7 @@ class VoiceAnnouncer {
     const sound = this.audioCache.get(line);
     if (sound) {
       sound.currentTime = 0;
-      sound.play().catch(() => {
+      audio.playVoice(sound).catch(() => {
         this.speakSynthesis(VOICE_TEXT[line]);
       });
     } else {
