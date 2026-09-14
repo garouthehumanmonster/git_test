@@ -11,9 +11,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "sim": "tsx scripts/sim-match.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "art:build": "tsx scripts/build-backdrops.ts",
+    "art:preview": "tsx scripts/render-preview.ts"
   },
   "devDependencies": {
+    "jpeg-js": "^0.4.4",
     "tsx": "^4.19.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",

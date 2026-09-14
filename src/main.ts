@@ -42,7 +42,11 @@ window.addEventListener('resize', updateRotateHint);
 window.addEventListener('load', () => {
   const h = document.createElement('div');
   h.id = 'rotate-hint';
-  h.innerHTML = '<div style="text-align:center"><div style="font-size:32px">📱↻</div><div style="margin-top:6px;font-size:11px;opacity:.85">Rotate for best view</div></div>';
+  // Drawn instruction (no emoji) so the presentation stays consistent with the
+  // in-game pixel type.
+  h.innerHTML = '<div style="text-align:center;font-family:monospace;letter-spacing:2px;color:#ffe0b0"><div '
+    + 'style="width:34px;height:56px;margin:0 auto 10px;border:3px solid #8a5a2c;border-radius:6px;'
+    + 'background:#171009"></div>ROTATE FOR BEST VIEW</div>';
   Object.assign(h.style, {
     position: 'fixed', inset: '0', background: 'rgba(11,9,24,0.85)',
     color: '#fff', display: 'none', alignItems: 'center', justifyContent: 'center',

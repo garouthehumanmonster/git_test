@@ -111,13 +111,18 @@ export type Intent =
   | { type: 'upgrade'; side: Side; which: 'forge' | 'armor' };
 
 // --- Lane geometry -----------------------------------------------------------
-export const LANE_WIDTH = 900;
-export const LANE_HEIGHT = 240;
-export const LANE_TOP = 130;   // top of the walking track
-export const LANE_BOTTOM = 190;
+// The view is a 6:9 arcade canvas, drawn at exactly 2x one authored pixel:
+//   0..286   painted sky band (parallax scenery)
+//   286..430 lane terrain, the walkable strip units fight over
+//   430..470 foreground set dressing
+//   470..540 HUD panel
+export const LANE_WIDTH = 960;
+export const LANE_HEIGHT = 540;
+export const LANE_TOP = 286;   // horizon: where the sky band ends
+export const LANE_BOTTOM = 446; // front edge of the walkable lane
 export const LANE_CENTER_Y = (LANE_TOP + LANE_BOTTOM) / 2;
-export const PLAYER_BASE_X = 55;
-export const AI_BASE_X = LANE_WIDTH - 55;
+export const PLAYER_BASE_X = 66;
+export const AI_BASE_X = LANE_WIDTH - 66;
 export const SPAWN_BUFFER_PX = 35;  // units spawn this far in front of their base
 
 // --- Economy & balance -------------------------------------------------------

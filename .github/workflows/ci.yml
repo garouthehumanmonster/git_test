@@ -32,5 +32,13 @@ jobs:
       - name: Run Headless Sim Balance Check
         run: npm run sim 25
 
+      - name: Verify Generated Backdrop Assets
+        run: |
+          npm run art:build
+          git diff --exit-code -- public/atlas
+
+      - name: Render Scene Preview (art pipeline smoke test)
+        run: npm run art:preview
+
       - name: Build Production Bundle
         run: npm run build
