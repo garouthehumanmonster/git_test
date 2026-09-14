@@ -54,39 +54,58 @@ const CLUBBER: SpriteOp[] = [
   r(13, 2, 7, 2, 'panel'),
   r(14, 4, 6, 1, 'team'),
   r(18, 6, 1, 1, 'ink'),
-  // club: forearm, shaft, knotted head
+  // club raised overhead: forearm, wrist, shaft, knotted head. Held high so the
+  // weapon reads above the file instead of barring across the next unit's face.
   r(21, 9, 3, 2, 'body'),
-  r(24, 8, 3, 2, 'body'),
-  r(27, 8, 7, 2, 'edge'),
-  r(33, 5, 6, 5, 'body'),
-  r(34, 6, 2, 1, 'accent'),
+  r(24, 7, 4, 2, 'body'),
+  r(27, 5, 6, 2, 'edge'),
+  r(31, 1, 5, 5, 'body'),
+  r(32, 2, 2, 1, 'accent'),
 ];
 
+/**
+ * War mammoth. Read as an animal first: a domed skull, a tall shoulder hump
+ * sloping down to low hindquarters, and daylight under the belly between the
+ * hind and fore legs. The earlier slab body (one 34x11 rectangle with four dark
+ * leg slots) merged with its neighbours into a pile of outlined rectangles.
+ */
 const WAR_MAMMOTH: SpriteOp[] = [
-  // four legs + feet
-  r(6, 20, 4, 8, 'mid'), r(13, 20, 4, 8, 'mid'),
-  r(22, 20, 4, 8, 'mid'), r(29, 20, 4, 8, 'mid'),
-  r(5, 28, 5, 1, 'panel'), r(12, 28, 5, 1, 'panel'),
-  r(21, 28, 5, 1, 'panel'), r(28, 28, 5, 1, 'panel'),
-  // tail, shaggy body, shoulder fur
-  r(2, 11, 2, 5, 'mid'),
-  r(4, 10, 34, 11, 'edge'),
-  r(4, 19, 34, 2, 'mid'),
-  r(7, 12, 7, 6, 'body'),
-  // ear, head, eye, tusk, trunk
-  r(36, 6, 4, 4, 'mid'),
-  r(38, 7, 9, 9, 'edge'),
+  // legs — near legs in body tone so they read as limbs, far legs darkened.
+  r(7, 20, 4, 8, 'edge'), r(11, 20, 3, 8, 'mid'),
+  r(29, 20, 4, 8, 'edge'), r(33, 20, 3, 8, 'mid'),
+  r(6, 28, 6, 1, 'panel'), r(11, 28, 4, 1, 'panel'),
+  r(28, 28, 6, 1, 'panel'), r(33, 28, 4, 1, 'panel'),
+  // body: barrel, then the hump stepping up to the skull
+  r(4, 13, 34, 7, 'edge'),
+  r(20, 10, 17, 4, 'edge'),
+  r(25, 7, 11, 3, 'edge'),
+  r(5, 18, 32, 2, 'mid'),
+  r(23, 9, 8, 1, 'body'),
+  r(8, 12, 8, 1, 'body'),
+  r(14, 13, 4, 5, 'mid'),
+  r(10, 15, 3, 4, 'body'),
+  // tail with a tuft
+  r(2, 13, 2, 3, 'edge'), r(1, 16, 2, 4, 'mid'), r(2, 20, 2, 2, 'edge'),
+  // skull, dome, ear, cheek, eye
+  r(37, 8, 9, 7, 'edge'),
+  r(39, 5, 6, 3, 'edge'),
+  r(36, 9, 3, 4, 'mid'),
+  r(40, 10, 3, 3, 'body'),
   r(43, 10, 1, 1, 'ink'),
-  r(46, 13, 3, 3, 'light'),
-  r(46, 11, 2, 3, 'body'),
-  r(47, 15, 2, 3, 'light'),
-  // rider: cape, head, spear with pennant
-  r(14, 3, 6, 8, 'body'),
-  r(13, 4, 7, 1, 'team'),
-  r(15, 0, 4, 4, 'body'),
-  r(14, 0, 5, 1, 'panel'),
-  r(22, 0, 1, 12, 'edge'),
-  tri(23, 0, 30, 3, 23, 6, 'team'),
+  // trunk curling down in front of the chest
+  r(45, 12, 2, 6, 'edge'), r(44, 18, 3, 2, 'edge'), r(44, 20, 3, 1, 'mid'),
+  // tusks sweeping forward and up
+  r(43, 16, 2, 2, 'light'), r(45, 15, 3, 2, 'light'),
+  r(47, 12, 2, 3, 'light'), r(48, 10, 1, 2, 'light'),
+  // rider: fur-clad chief with a spear and pennant
+  r(20, 6, 5, 5, 'mid'),
+  r(16, 10, 11, 2, 'team'),
+  r(19, 3, 6, 6, 'body'),
+  r(19, 3, 6, 1, 'team'),
+  r(20, 0, 4, 3, 'body'),
+  r(19, 0, 6, 1, 'panel'),
+  r(25, 0, 1, 9, 'edge'),
+  tri(26, 0, 33, 2, 26, 5, 'team'),
 ];
 
 const SLINGER: SpriteOp[] = [

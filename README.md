@@ -35,7 +35,7 @@ turret/superweapon HUD icons, at the exact scale they appear in play:
 - **Veterancy Progression**: Units gain kills on the field. Promoted units earn rank chevrons (+25%/+55% damage, +15%/+30% HP, +6% speed) and an instant HP top-up.
 - **In-Age Upgrades**: Spend gold on the **Forge** (`U`, +15% DMG per rank) and **Armor** (`Y`, +15% HP per rank). 3 ranks per age. Multipliers stack multiplicatively with veterancy.
 - **CrazyGames SDK v3 Integration**: Built-in `gameplayStart()`, `gameplayStop()`, `happytime()` triggers, interstitial midgame ads on match restart, and a `BONUS +100G` rewarded ad button.
-- **Voice Announcer & Procedural Chiptune Audio**: Self-contained Web Audio chiptune sequencer (bass + lead + drums) + one-shot SFX + age-synced radio-filtered announcer voice with Web Speech API fallback. Press **M** to mute.
+- **Voice Announcer & Procedural Chiptune Audio**: Self-contained Web Audio chiptune sequencer (bass + lead + drums) with dedicated turret, superweapon and collapse effects, plus a **ten-line AI-narrated announcer** routed through an age-synced arcade radio chain. Press **M** to mute everything.
 - **One Pixel Grid, Three Ages**: Every unit, tower, prop and projectile is generated at runtime in `src/render/` from a tiny pixel-primitive sprite language, then drawn at exactly 2x (one authored pixel = two canvas pixels). A shared ink colour (`#1a1528`) is dilated around every silhouette in code, so nothing ever looks like a floating cut-out.
 - **Painted Backdrops, Graded On Palette**: The four age panoramas are real pixel art, pre-processed offline (`npm run art:build`) into 450x143 strips and posterised onto each age's landscape palette, so they sit behind the lane instead of washing it out.
 - **Team Cloth**: Player and enemy units share one set of silhouettes and are separated by baked-in team colours plus heraldry on towers and flags.
@@ -113,15 +113,14 @@ public/
 ├─ atlas/                      # Graded, palette-locked age backdrops (generated)
 ├─ banner.jpg                  # 16:9 CrazyGames portal banner art
 ├─ icon.jpg                    # 1:1 game icon & favicon
-└─ voice/                      # Announcer voice WAV audio callouts
+└─ voice/                      # Announcer narration pack (AI voice, MP3)
 docs/                          # Committed scene previews (see `npm run art:preview`)
 test/                          # Vitest suite (sim logic, determinism, art contract)
 scripts/
 ├─ sim-match.ts                # Headless bot-vs-bot runner
 ├─ build-backdrops.ts          # Offline art pipeline: grade + posterise panoramas
 ├─ render-preview.ts           # Software-renders the real scene to PNG
-├─ lib/                        # PNG encoder + area resampler + software rasteriser
-└─ gen_voice.ps1               # Voice synthesis script
+└─ lib/                        # PNG encoder + area resampler + software rasteriser
 .github/workflows/ci.yml       # Automated test, art-pipeline and build checks
 LICENSE                        # MIT License
 ```
@@ -169,7 +168,12 @@ The audio engine is similarly self-contained: `audio.init()` (must be called
 after a user gesture to satisfy browser autoplay policies) spins up an
 `AudioContext` with a master compressor, a music bus, and an SFX bus, then
 starts a lookahead scheduler that sequences a chiptune loop live. SFX are one-
-shot oscillator + filtered-noise patches; no audio files ship with the game.
+shot oscillator + filtered-noise patches — turret fire, superweapon strikes and
+the timeline collapse each have their own voice rather than reusing the bow
+shot. The only shipped audio is the announcer pack in `public/voice/` (ten AI
+narration MP3s, one consistent speaker), which plays through a 300Hz/3.4kHz
+radio band, a 12-bit crusher and age-synced reverb; `M` mutes music, effects and
+voice together.
 
 ## Campaign
 
@@ -213,7 +217,7 @@ The game is strictly deterministic. The Mulberry32 PRNG state is preserved and r
 - **Banner & Icon:** 16:9 CrazyGames portal banner and 1:1 favicon / app icon.
 - **Battlefield:** Painted per-age panoramas, pre-graded onto the age palette by `scripts/build-backdrops.ts` and shipped in `public/atlas/`; lane terrain, props and parallax are drawn procedurally.
 - **Units, bases, flags, projectiles, particles, props, UI crests & icons:** Drawn procedurally at boot with Phaser Graphics from op lists in `src/render/*art*.ts`, on a strict 2x texel grid with an automatic 1px ink outline.
-- **Audio:** Web Audio chiptune synthesizer (`src/audio/audio.ts`) + announcer voice callouts with Web Speech API fallback (`src/audio/voice.ts`).
+- **Audio:** Web Audio chiptune synthesizer and effect kit (`src/audio/audio.ts`), plus the AI-narrated announcer pack in `public/voice/` (`src/audio/voice.ts`).
 
 ## License
 

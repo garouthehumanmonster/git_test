@@ -252,6 +252,60 @@ export class AudioEngine {
     this.playTone({ type: age === 'modern' ? 'square' : 'sawtooth', freqStart: start, freqEnd: end, dur, vol: 0.18, attack: 0.002, decay: dur, dest: this.sfxGain });
   }
 
+  /**
+   * Base-defence turret. Each age fires a different machine, so each age gets
+   * its own signature instead of borrowing the bow shot.
+   */
+  sfxTurret(age: AgeKey = 'stone'): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (age === 'modern') {
+      // Twin MG: a chamber boom under three fast cracks.
+      this.playToneAt(t, { type: 'square', freqStart: 190, freqEnd: 55, dur: 0.1, vol: 0.16, attack: 0.001, decay: 0.09, dest: this.sfxGain });
+      for (let i = 0; i < 3; i++) this.playNoiseAt(t + i * 0.05, 0.04, 5200, 1400, 0.13);
+    } else if (age === 'medieval') {
+      // Ballista: rope snap, then a heavy wooden thunk.
+      this.playNoiseAt(t, 0.07, 2600, 700, 0.18);
+      this.playToneAt(t + 0.02, { type: 'triangle', freqStart: 210, freqEnd: 62, dur: 0.22, vol: 0.26, attack: 0.001, decay: 0.2, dest: this.sfxGain });
+      this.playNoiseAt(t + 0.02, 0.14, 900, 220, 0.14);
+    } else {
+      // Sling: a whip crack, then the pouch releasing the rock.
+      this.playNoiseAt(t, 0.05, 3000, 900, 0.2);
+      this.playToneAt(t, { type: 'triangle', freqStart: 440, freqEnd: 150, dur: 0.13, vol: 0.2, attack: 0.001, decay: 0.12, dest: this.sfxGain });
+    }
+  }
+
+  /** Superweapon impact: meteor, fire-arrow volley or airstrike. */
+  sfxStrike(kind: 'meteor' | 'volley' | 'airstrike'): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    if (kind === 'volley') {
+      // Arrows saturating a zone: a rolling crackle under a descending drone.
+      for (let i = 0; i < 6; i++) this.playNoiseAt(t + i * 0.07, 0.1, 3200 - i * 240, 900, 0.12);
+      this.playToneAt(t, { type: 'sawtooth', freqStart: 260, freqEnd: 130, dur: 0.5, vol: 0.1, attack: 0.04, decay: 0.45, dest: this.sfxGain });
+    } else if (kind === 'airstrike') {
+      // Falling whistle, then a carpet of bombs going off.
+      this.playToneAt(t, { type: 'sine', freqStart: 1700, freqEnd: 220, dur: 0.45, vol: 0.13, attack: 0.03, decay: 0.44, dest: this.sfxGain });
+      for (let i = 0; i < 3; i++) this.playNoiseAt(t + 0.45 + i * 0.12, 0.34, 2000, 160, 0.26);
+      this.playToneAt(t + 0.45, { type: 'sine', freqStart: 150, freqEnd: 30, dur: 0.7, vol: 0.38, attack: 0.001, decay: 0.65, dest: this.sfxGain });
+    } else {
+      // Meteor: atmospheric entry, then a ground-shaking blast.
+      this.playToneAt(t, { type: 'sawtooth', freqStart: 80, freqEnd: 260, dur: 0.45, vol: 0.15, attack: 0.12, decay: 0.4, dest: this.sfxGain });
+      this.playNoiseAt(t + 0.45, 0.75, 2600, 110, 0.32);
+      this.playToneAt(t + 0.45, { type: 'sine', freqStart: 130, freqEnd: 24, dur: 0.85, vol: 0.42, attack: 0.001, decay: 0.8, dest: this.sfxGain });
+    }
+  }
+
+  /** Timeline collapse: three alarm blips over a long descending drone. */
+  sfxCollapse(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    for (let i = 0; i < 3; i++) {
+      this.playToneAt(t + i * 0.3, { type: 'square', freqStart: 900, freqEnd: 600, dur: 0.26, vol: 0.15, attack: 0.008, decay: 0.24, dest: this.sfxGain });
+    }
+    this.playToneAt(t, { type: 'sawtooth', freqStart: 170, freqEnd: 38, dur: 1.1, vol: 0.2, attack: 0.06, decay: 1.0, dest: this.sfxGain });
+  }
+
   sfxGold(): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
@@ -559,6 +613,22 @@ export class AudioEngine {
     g.gain.exponentialRampToValueAtTime(0.001, t + decay);
     osc.connect(g); g.connect(dest);
     osc.start(t); osc.stop(t + dur + 0.02);
+  }
+
+  /** Filtered noise burst — the percussion half of the turret and strike kits. */
+  private playNoiseAt(t: number, dur: number, filterStart: number, filterEnd: number, vol: number): void {
+    if (!this.ctx) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.getOrMakeNoiseBuffer(dur);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(filterStart, t);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(60, filterEnd), t + dur);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(filter); filter.connect(g); g.connect(this.sfxGain);
+    src.start(t); src.stop(t + dur + 0.02);
   }
 
   private makeBitCrusherCurve(bits: number): Float32Array<ArrayBuffer> {
