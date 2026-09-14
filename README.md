@@ -7,6 +7,13 @@ A lightweight, single-lane RTS played directly in your browser. March your army 
 
 ![Timeline War Banner](public/banner.jpg)
 
+## Screenshots
+
+Rendered by `npm run art:preview` from the same art code the game runs — no
+browser required. Full-size per-age frames live in `docs/`.
+
+![Timeline War — all three ages and their unit line-ups](docs/overview.png)
+
 ## Highlights
 
 - **Pure Deterministic Simulation**: Decoupled fixed-step tick loop (50ms) driven by a 32-bit Mulberry32 PRNG. Zero DOM or Phaser dependencies inside `src/sim/`. Netplay and replay ready.

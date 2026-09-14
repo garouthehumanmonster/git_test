@@ -50,6 +50,7 @@ export function paintLane(g: PixelGraphics, age: Age, _characterPalette?: unknow
   ditherBand(g, top + 76, terrain.field, terrain.fieldNear);
   fill(g, 0, top + 79, LANE_WIDTH, bottom - (top + 79), terrain.fieldNear);
 
+  paintFieldPatches(g, age, terrain);
   paintTrack(g, age, terrain);
   paintTerrainDetail(g, age, terrain.detail, terrain.accent, char);
 
@@ -83,6 +84,45 @@ function ditherBand(g: PixelGraphics, y: number, a: number, b: number): void {
 function fill(g: PixelGraphics, x: number, y: number, w: number, h: number, color: number, alpha = 1): void {
   g.fillStyle(color, alpha);
   g.fillRect(x, y, w, h);
+}
+
+/**
+ * Large soft patches of slightly different field colour, so the ground reads as
+ * a landscape with weather and terrain in it rather than one flat fill.
+ */
+function paintFieldPatches(
+  g: PixelGraphics,
+  age: Age,
+  terrain: { fieldFar: number; field: number; fieldNear: number; detail: number },
+): void {
+  const tones = [terrain.fieldFar, terrain.fieldNear, terrain.field];
+  for (let i = 0; i < 26; i++) {
+    const cx = hash(i * 71 + 3) * LANE_WIDTH;
+    const cy = LANE_TOP + 16 + hash(i * 73 + 9) * 118;
+    const rx = 30 + hash(i * 79 + 5) * 70;
+    const ry = 5 + hash(i * 83 + 7) * 9;
+    const tone = tones[i % tones.length]!;
+    for (let y = Math.round(cy - ry); y <= Math.round(cy + ry); y++) {
+      if (y < LANE_TOP + 12 || y > FORE_BOTTOM - 14) continue;
+      const dy = (y - cy) / ry;
+      const span = Math.round(rx * Math.sqrt(Math.max(0, 1 - dy * dy)));
+      const drift = Math.round(hash(i * 89 + y) * 4) - 2;
+      fill(g, Math.round(cx) - span + drift, y, span * 2, 1, tone);
+    }
+  }
+  // Modern gets a few lighter spill patches for wet asphalt.
+  if (age === 'modern') {
+    for (let i = 0; i < 12; i++) {
+      const cx = hash(i * 97 + 11) * LANE_WIDTH;
+      const cy = LANE_TOP + 30 + hash(i * 101 + 3) * 96;
+      const rx = 18 + hash(i * 103 + 5) * 40;
+      for (let y = Math.round(cy - 3); y <= Math.round(cy + 3); y++) {
+        const dy = (y - cy) / 3;
+        const span = Math.round(rx * Math.sqrt(Math.max(0, 1 - dy * dy)));
+        fill(g, Math.round(cx) - span, y, span * 2, 1, terrain.detail, 0.45);
+      }
+    }
+  }
 }
 
 /** The winding path armies walk down, following the lane's gentle valley. */

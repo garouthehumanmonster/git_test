@@ -243,19 +243,65 @@ function renderUnitSheet(age: Age): SoftGfx {
   return g;
 }
 
+/** Half-size nearest-neighbour downscale, for the combined overview sheet. */
+function halve(src: SoftGfx): SoftGfx {
+  const out = new SoftGfx(Math.floor(src.width / 2), Math.floor(src.height / 2));
+  for (let y = 0; y < out.height; y++) {
+    for (let x = 0; x < out.width; x++) {
+      const si = ((y * 2) * src.width + x * 2) * 4;
+      const di = (y * out.width + x) * 4;
+      out.data[di] = src.data[si]!;
+      out.data[di + 1] = src.data[si + 1]!;
+      out.data[di + 2] = src.data[si + 2]!;
+      out.data[di + 3] = 255;
+    }
+  }
+  return out;
+}
+
+/**
+ * One sheet showing all three ages and their unit line-ups, committed as
+ * `docs/overview.png` so the whole presentation can be reviewed at a glance.
+ */
+function composeOverview(scenes: Record<string, SoftGfx>, sheets: Record<string, SoftGfx>): SoftGfx {
+  const halves = AGES.map((age) => halve(scenes[age]!));
+  const cellW = halves[0]!.width;
+  const gap = 6;
+  const sheetH = halve(sheets[AGES[0]!]!).height;
+  const totalH = gap + AGES.length * (halves[0]!.height + gap + sheetH + gap);
+  const out = new SoftGfx(cellW + gap * 2, totalH);
+  fill(out, 0, 0, out.width, out.height, 0x0b0918);
+  let y = gap;
+  for (let i = 0; i < AGES.length; i++) {
+    blit(out, halves[i]!, gap, y, 1);
+    y += halves[i]!.height + gap;
+    blit(out, halve(sheets[AGES[i]!]!), gap, y, 1);
+    y += sheetH + gap;
+  }
+  return out;
+}
+
 function main(): void {
   mkdirSync(join(ROOT, 'docs'), { recursive: true });
   mkdirSync(join(ROOT, 'art', 'preview'), { recursive: true });
+  const scenes: Record<string, SoftGfx> = {};
+  const sheets: Record<string, SoftGfx> = {};
   for (const age of AGES) {
     const scene = renderScene(age);
+    scenes[age] = scene;
     const png = encodePng(scene.width, scene.height, scene.data);
     writeFileSync(join(ROOT, 'docs', `scene_${age}.png`), png);
     writeFileSync(join(ROOT, 'art', 'preview', `scene_${age}.png`), png);
     const sheet = renderUnitSheet(age);
+    sheets[age] = sheet;
     const sheetPng = encodePng(sheet.width, sheet.height, sheet.data);
     writeFileSync(join(ROOT, 'docs', `units_${age}.png`), sheetPng);
     console.log(`scene_${age}.png  ${(png.length / 1024).toFixed(1)} KB   units_${age}.png ${(sheetPng.length / 1024).toFixed(1)} KB`);
   }
+  const overview = composeOverview(scenes, sheets);
+  const overviewPng = encodePng(overview.width, overview.height, overview.data);
+  writeFileSync(join(ROOT, 'docs', 'overview.png'), overviewPng);
+  console.log(`overview.png  ${overview.width}x${overview.height}  ${(overviewPng.length / 1024).toFixed(1)} KB`);
 }
 
 main();
