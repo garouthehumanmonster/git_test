@@ -92,6 +92,12 @@ describe('rngWeighted', () => {
       state = r.next;
     }
   });
+
+  it('rejects invalid weighted input instead of returning undefined', () => {
+    expect(() => rngWeighted(1, [])).toThrow(RangeError);
+    expect(() => rngWeighted(1, [['a', -1]])).toThrow(RangeError);
+    expect(() => rngWeighted(1, [['a', 0]])).toThrow(RangeError);
+  });
 });
 
 describe('RNG class', () => {

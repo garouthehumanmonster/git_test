@@ -19,11 +19,19 @@ export class AudioEngine {
   private arpGain!: GainNode;
   private drumGain!: GainNode;
   private compressor!: DynamicsCompressorNode;
+  private voiceHighPass!: BiquadFilterNode;
+  private voiceLowPass!: BiquadFilterNode;
+  private voiceBitCrusher!: WaveShaperNode;
+  private voiceDryGain!: GainNode;
+  private voiceReverb!: ConvolverNode;
+  private voiceWetGain!: GainNode;
+  private voiceSources = new WeakMap<HTMLAudioElement, MediaElementAudioSourceNode>();
   private musicStarted = false;
   private nextStepTime = 0;
   private step = 0;
   private musicState: MusicState = 'menu';
   private musicAge: AgeKey = 'stone';
+  private voiceAge: AgeKey = 'stone';
   private muted = false;
   private musicMuted = false;
   private tension = 0; // 0..1, drives filter + lead intensity when base is low
@@ -97,12 +105,16 @@ export class AudioEngine {
 
   async init(): Promise<void> {
     if (this.ctx) return;
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AC = window.AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    // Some embedded browsers expose no Web Audio API. Audio is optional; the
+    // game must remain playable instead of throwing during the first input.
+    if (!AC) return;
     this.ctx = new AC();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
 
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = 0.65;
+    this.masterGain.gain.value = this.muted ? 0 : 0.65;
 
     this.compressor = this.ctx.createDynamicsCompressor();
     this.compressor.threshold.value = -18;
@@ -121,6 +133,28 @@ export class AudioEngine {
     this.drumGain = this.ctx.createGain(); this.drumGain.gain.value = 0.45;
     this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = 0.5;
 
+    // Radio-comm voice bus: a 300Hz high-pass and 3.4kHz low-pass recreate
+    // a narrow arcade speaker, while the 12-bit waveshaper adds deliberate
+    // digital grain instead of a clean synthetic voice.
+    this.voiceHighPass = this.ctx.createBiquadFilter();
+    this.voiceHighPass.type = 'highpass';
+    this.voiceHighPass.frequency.value = 300;
+    this.voiceLowPass = this.ctx.createBiquadFilter();
+    this.voiceLowPass.type = 'lowpass';
+    this.voiceLowPass.frequency.value = 3400;
+    this.voiceBitCrusher = this.ctx.createWaveShaper();
+    this.voiceBitCrusher.curve = this.makeBitCrusherCurve(12);
+    this.voiceBitCrusher.oversample = 'none';
+    this.voiceDryGain = this.ctx.createGain(); this.voiceDryGain.gain.value = 0.78;
+    this.voiceReverb = this.ctx.createConvolver();
+    this.voiceReverb.buffer = this.makeVoiceImpulse(this.voiceAge);
+    this.voiceWetGain = this.ctx.createGain(); this.voiceWetGain.gain.value = 0.22;
+    this.voiceHighPass.connect(this.voiceLowPass);
+    this.voiceLowPass.connect(this.voiceBitCrusher);
+    this.voiceBitCrusher.connect(this.voiceDryGain);
+    this.voiceBitCrusher.connect(this.voiceReverb);
+    this.voiceReverb.connect(this.voiceWetGain);
+
     // Low-pass filter on the pad/arp for a slightly softer pad.
     const padFilter = this.ctx.createBiquadFilter();
     padFilter.type = 'lowpass'; padFilter.frequency.value = 1800;
@@ -132,6 +166,8 @@ export class AudioEngine {
     this.drumGain.connect(this.musicGain);
     this.musicGain.connect(this.masterGain);
     this.sfxGain.connect(this.masterGain);
+    this.voiceDryGain.connect(this.masterGain);
+    this.voiceWetGain.connect(this.masterGain);
     this.masterGain.connect(this.compressor);
     this.compressor.connect(this.ctx.destination);
   }
@@ -156,6 +192,23 @@ export class AudioEngine {
 
   setMusicAge(age: AgeKey): void {
     this.musicAge = age;
+  }
+
+  setVoiceAge(age: AgeKey): void {
+    this.voiceAge = age;
+    if (this.ctx && this.voiceReverb) this.voiceReverb.buffer = this.makeVoiceImpulse(age);
+  }
+
+  /** Play an announcer through the arcade radio processing chain. */
+  playVoice(element: HTMLAudioElement): Promise<void> {
+    if (!this.ctx || !this.voiceHighPass) return element.play();
+    let source = this.voiceSources.get(element);
+    if (!source) {
+      source = this.ctx.createMediaElementSource(element);
+      source.connect(this.voiceHighPass);
+      this.voiceSources.set(element, source);
+    }
+    return element.play();
   }
 
   /** Set tension 0..1 — driven by how low the player tower HP is. */
@@ -506,6 +559,31 @@ export class AudioEngine {
     g.gain.exponentialRampToValueAtTime(0.001, t + decay);
     osc.connect(g); g.connect(dest);
     osc.start(t); osc.stop(t + dur + 0.02);
+  }
+
+  private makeBitCrusherCurve(bits: number): Float32Array<ArrayBuffer> {
+    const levels = 2 ** bits;
+    const curve = new Float32Array(new ArrayBuffer(4096 * Float32Array.BYTES_PER_ELEMENT));
+    for (let i = 0; i < curve.length; i++) {
+      const input = (i / (curve.length - 1)) * 2 - 1;
+      curve[i] = Math.round(((input + 1) * 0.5) * (levels - 1)) / (levels - 1) * 2 - 1;
+    }
+    return curve;
+  }
+
+  private makeVoiceImpulse(age: AgeKey): AudioBuffer {
+    const durations: Record<AgeKey, number> = { stone: 0.16, medieval: 0.22, modern: 0.28 };
+    const seconds = durations[age];
+    const length = Math.floor(this.ctx!.sampleRate * seconds);
+    const impulse = this.ctx!.createBuffer(2, length, this.ctx!.sampleRate);
+    const decay = age === 'modern' ? 3.2 : age === 'medieval' ? 4.2 : 5.5;
+    for (let channel = 0; channel < impulse.numberOfChannels; channel++) {
+      const data = impulse.getChannelData(channel);
+      for (let i = 0; i < length; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+      }
+    }
+    return impulse;
   }
 
   private noiseBuf: AudioBuffer | null = null;

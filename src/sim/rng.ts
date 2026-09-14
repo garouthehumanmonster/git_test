@@ -18,18 +18,25 @@ export function mulberry32(state: number): { value: number; next: number } {
 
 /** Integer in [min, max] inclusive (pure). */
 export function rngInt(state: number, min: number, max: number): { value: number; next: number } {
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min > max) {
+    throw new RangeError(`Invalid integer range: [${min}, ${max}]`);
+  }
   const r = mulberry32(state);
   return { value: min + Math.floor(r.value * (max - min + 1)), next: r.next };
 }
 
 /** Float in [min, max) (pure). */
 export function rngFloat(state: number, min: number, max: number): { value: number; next: number } {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) {
+    throw new RangeError(`Invalid float range: [${min}, ${max})`);
+  }
   const r = mulberry32(state);
   return { value: min + r.value * (max - min), next: r.next };
 }
 
 /** Pick a random element from a readonly array (pure). */
 export function rngPick<T>(state: number, arr: readonly T[]): { value: T; next: number } {
+  if (arr.length === 0) throw new RangeError('Cannot pick from an empty array');
   const r = rngInt(state, 0, arr.length - 1);
   return { value: arr[r.value]!, next: r.next };
 }
@@ -39,8 +46,13 @@ export function rngWeighted<T>(
   state: number,
   entries: ReadonlyArray<readonly [T, number]>,
 ): { value: T; next: number } {
+  if (entries.length === 0) throw new RangeError('Cannot pick from empty weighted entries');
   let total = 0;
-  for (const [, w] of entries) total += w;
+  for (const [, w] of entries) {
+    if (!Number.isFinite(w) || w < 0) throw new RangeError('Weights must be finite and non-negative');
+    total += w;
+  }
+  if (total <= 0) throw new RangeError('Weighted entries must have a positive total weight');
   const rf = rngFloat(state, 0, total);
   let acc = 0;
   for (const [v, w] of entries) {
@@ -70,27 +82,28 @@ export class RNG {
 
   /** Integer in [min, max] inclusive. */
   int(min: number, max: number): number {
-    return min + Math.floor(this.next() * (max - min + 1));
+    const r = rngInt(this.state, min, max);
+    this.state = r.next;
+    return r.value;
   }
 
   /** Float in [min, max). */
   float(min: number, max: number): number {
-    return min + this.next() * (max - min);
+    const r = rngFloat(this.state, min, max);
+    this.state = r.next;
+    return r.value;
   }
 
   pick<T>(arr: readonly T[]): T {
-    return arr[this.int(0, arr.length - 1)]!;
+    const r = rngPick(this.state, arr);
+    this.state = r.next;
+    return r.value;
   }
 
   weighted<T>(entries: ReadonlyArray<readonly [T, number]>): T {
-    let total = 0;
-    for (const [, w] of entries) total += w;
-    let r = this.next() * total;
-    for (const [v, w] of entries) {
-      r -= w;
-      if (r <= 0) return v;
-    }
-    return entries[entries.length - 1]![0];
+    const r = rngWeighted(this.state, entries);
+    this.state = r.next;
+    return r.value;
   }
 
   /** Deterministically spawn a child RNG (decorrelated). */

@@ -17,7 +17,7 @@ A lightweight, single-lane RTS played directly in your browser. March your army 
 - **Veterancy Progression**: Units gain kills on the field. Promoted units earn rank chevrons (+25%/+55% damage, +15%/+30% HP, +6% speed) and an instant HP top-up.
 - **In-Age Upgrades**: Spend gold on the **Forge** (`U`, +15% DMG per rank) and **Armor** (`Y`, +15% HP per rank). 3 ranks per age. Multipliers stack multiplicatively with veterancy.
 - **CrazyGames SDK v3 Integration**: Built-in `gameplayStart()`, `gameplayStop()`, `happytime()` triggers, interstitial midgame ads on match restart, and a `🎁 +100g` rewarded ad button.
-- **Voice Announcer & Procedural Chiptune Audio**: Self-contained Web Audio chiptune sequencer (bass + lead + drums) + one-shot SFX + announcer voice callouts with Web Speech API fallback. Press **M** to mute.
+- **Voice Announcer & Procedural Chiptune Audio**: Self-contained Web Audio chiptune sequencer (bass + lead + drums) + one-shot SFX + age-synced radio-filtered announcer voice with Web Speech API fallback. Press **M** to mute.
 - **100% Procedural Pixel Art**: Units, bases, projectiles, particles, and flags are drawn procedurally at runtime in `src/render/textures.ts`. Zero bulky sprite sheets, keeping the bundle fast and lightweight.
 - **Headless Bot Self-Play**: Run CI balance matches via `npm run sim`.
 
@@ -65,7 +65,7 @@ src/
 │  ├─ rng.ts                   # Mulberry32 PRNG + rehydratable RNG wrapper
 │  └─ sim.ts                   # Fixed-tick combat, targeting, pathing, AI
 └─ render/
-   ├─ BootScene.ts             # Loads backgrounds and generates runtime textures
+   ├─ BootScene.ts             # Generates runtime textures; no raster gameplay art
    ├─ GameScene.ts             # Render loop, particle emitters, screen shake, input
    ├─ Hud.ts                   # Responsive HUD (HP bars, buttons, gold, XP, ads)
    ├─ textures.ts              # Procedural vector/pixel canvas textures
@@ -73,8 +73,7 @@ src/
 public/
 ├─ banner.jpg                  # 16:9 CrazyGames portal banner art
 ├─ icon.jpg                    # 1:1 game icon & favicon
-├─ voice/                      # Announcer voice WAV audio callouts
-└─ bg_*.jpg                    # Per-age panoramic battlefield backgrounds
+└─ voice/                      # Announcer voice WAV audio callouts
 test/                          # Vitest suite (sim logic + golden determinism replays)
 scripts/
 ├─ sim-match.ts                # Headless bot-vs-bot runner
@@ -97,18 +96,17 @@ shot oscillator + filtered-noise patches; no audio files ship with the game.
 
 ## Balance
 
-Balance was tuned against the built-in bot (see `simulateBotMatch`). Running
-50 bot-vs-bot matches produces ~50/50 win/loss with zero timeouts:
+Balance is tuned against the built-in bot (see `simulateBotMatch`). The
+headless player bot mirrors the AI's composition, evolution, and upgrade
+policy, so self-play is a useful smoke test rather than an unfair AI-vs-dummy
+comparison. Results vary by seed; a typical 50-match run is close to even and
+finishes without timeouts.
 
-```
-matches : 50
-wins    : 26 (52.0%)
-losses  : 24 (48.0%)
-timeouts: 0
-ticks avg/min/max: ~4400 / ~2800 / ~9500
+```bash
+npm run sim 50
 ```
 
-Run `npm run sim 50` to verify for yourself; tweak the tables in
+Use the output to spot regressions, then tweak the tables in
 `src/sim/types.ts` to rebalance.
 
 ## Testing & Determinism
@@ -116,13 +114,13 @@ Run `npm run sim 50` to verify for yourself; tweak the tables in
 The game is strictly deterministic. The Mulberry32 PRNG state is preserved and rehydrated from `state.rngState` on every tick. The test suite includes:
 1. **Unit & Transition Tests**: State initialization, economic gates, age transitions, and cooldown locks.
 2. **Golden Replay Tests**: Replaying fixed intent sequences verifies byte-for-byte state alignment and hash equality across runs (`test/sim/determinism.test.ts`).
-3. **Headless Bot Balance Tuning**: Automated bot matches report win/loss rates to ensure fair competition (`npm run sim 50`).
+3. **Headless Bot Balance Tuning**: Automated bot matches report win/loss rates and timeouts to catch balance regressions (`npm run sim 50`).
 
 ## Assets
 
 - **Banner & Icon:** 16:9 CrazyGames portal banner and 1:1 favicon / app icon.
-- **Backgrounds:** Panoramic pixel-art battlefield per civilization (stone, medieval, modern).
-- **Units, bases, flags, projectiles, particles, UI crests & icons:** Drawn procedurally at boot with Phaser Graphics in `src/render/textures.ts` — 0 KB external sprite overhead, no sprite sheets needed.
+- **Battlefield:** Per-age pixel landscapes are drawn procedurally at runtime; no raster backgrounds or sprite sheets are loaded.
+- **Units, bases, flags, projectiles, particles, UI crests & icons:** Drawn procedurally at boot with Phaser Graphics in `src/render/textures.ts` on a strict 2× texel grid.
 - **Audio:** Web Audio chiptune synthesizer (`src/audio/audio.ts`) + announcer voice callouts with Web Speech API fallback (`src/audio/voice.ts`).
 
 ## License
