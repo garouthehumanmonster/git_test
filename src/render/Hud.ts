@@ -73,8 +73,6 @@ export class Hud {
   private topPanel!: Phaser.GameObjects.Graphics;
   private bottomPanel!: Phaser.GameObjects.Graphics;
   private crest!: Phaser.GameObjects.Image;
-  private goldIcon!: Phaser.GameObjects.Image;
-  private xpIcon!: Phaser.GameObjects.Image;
   private titleImg?: Phaser.GameObjects.Image;
 
   private buttons: Array<{
@@ -209,23 +207,21 @@ export class Hud {
     }).setOrigin(0.5).setDepth(10);
 
     // Age crest
-    this.crest = s.add.image(16, 70, 'crest_stone').setOrigin(0, 0.5).setDepth(10);
-    this.crest.setScale(0.45);
+    this.crest = s.add.image(24, 84, 'crest_stone').setOrigin(0.5, 0.5).setDepth(10);
+    this.crest.setScale(1);
 
     // Resource icons + labels
-    this.goldIcon = s.add.image(62, 72, s.textures.exists('icon_gold') ? 'icon_gold' : '__DUMMY').setOrigin(0, 0.5).setDepth(10).setVisible(s.textures.exists('icon_gold'));
-    if (this.goldIcon.visible) this.goldIcon.setScale(0.55);
-    this.xpIcon = s.add.image(62, 90, s.textures.exists('icon_xp') ? 'icon_xp' : '__DUMMY').setOrigin(0, 0.5).setDepth(10).setVisible(s.textures.exists('icon_xp'));
-    if (this.xpIcon.visible) this.xpIcon.setScale(0.55);
-    this.goldText = s.add.text(80, 64, '', {
+    s.add.image(48, 72, 'icon_gold').setOrigin(0, 0.5).setDepth(10);
+    s.add.image(48, 90, 'icon_xp').setOrigin(0, 0.5).setDepth(10);
+    this.goldText = s.add.text(68, 64, '', {
       fontFamily: 'monospace', fontSize: '13px', color: '#ffd166', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 2,
     }).setDepth(10);
-    this.xpText = s.add.text(80, 82, '', {
+    this.xpText = s.add.text(68, 82, '', {
       fontFamily: 'monospace', fontSize: '11px', color: '#9dffef',
       stroke: '#000000', strokeThickness: 2,
     }).setDepth(10);
-    this.ageText = s.add.text(62, 100, '', {
+    this.ageText = s.add.text(48, 104, '', {
       fontFamily: 'monospace', fontSize: '11px', color: '#ffffff', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 2,
     }).setDepth(10);
@@ -391,9 +387,8 @@ export class Hud {
     const s = this.scene;
     const frame = s.add.graphics().setDepth(10);
     const bg = s.add.rectangle(x, y, w - 4, h - 4, 0x2a1b3d).setOrigin(0.5).setDepth(11).setInteractive({ useHandCursor: true });
-    const iconKey = s.textures.exists('icon_evolve') ? 'icon_evolve' : '__DUMMY';
-    const icon = s.add.image(x, y - h / 2 + 18, iconKey).setOrigin(0.5).setDepth(12);
-    if (iconKey === 'icon_evolve') icon.setScale(0.42); else icon.setVisible(false);
+    const icon = s.add.image(x, y - h / 2 + 16, 'icon_evolve').setOrigin(0.5).setDepth(12);
+    icon.setScale(1);
     const label = s.add.text(x, y + 6, 'EVOLVE', {
       fontFamily: 'monospace', fontSize: '10px', color: '#e0c3ff', fontStyle: 'bold',
       stroke: '#000000', strokeThickness: 2,

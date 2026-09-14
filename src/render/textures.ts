@@ -16,6 +16,7 @@ export function generateTextures(scene: Phaser.Scene): void {
   generateProjectileTexture(scene);
   generateParticleTextures(scene);
   generateFlagTextures(scene);
+  generateUITextures(scene);
 }
 
 function generateUnitTextures(scene: Phaser.Scene): void {
@@ -125,6 +126,12 @@ function generateBaseTextures(scene: Phaser.Scene): void {
   };
   makeBase('base_player', 0x1e88e5, 0x64b5f6, 0x90caf9);
   makeBase('base_ai',     0xd32f2f, 0xef5350, 0xff8a80);
+  makeBase('base_stone_player',    0x8a5a2c, 0xd9a25e, 0xffe0b0);
+  makeBase('base_stone_ai',        0xa83232, 0xd9a25e, 0xffe0b0);
+  makeBase('base_medieval_player', 0x2d4480, 0xffd166, 0x9dffef);
+  makeBase('base_medieval_ai',     0xb02e2e, 0xffd166, 0xffa0a0);
+  makeBase('base_modern_player',   0x0f4a52, 0x38fff0, 0xc8fff8);
+  makeBase('base_modern_ai',       0x8a1b24, 0xff5350, 0xffb0b8);
 }
 
 function generateProjectileTexture(scene: Phaser.Scene): void {
@@ -207,4 +214,113 @@ function generateFlagTextures(scene: Phaser.Scene): void {
   };
   makeFlag('flag_player', 0x64b5f6);
   makeFlag('flag_ai', 0xef5350);
+}
+
+function generateUITextures(scene: Phaser.Scene): void {
+  // Crest Stone (28x28)
+  if (!scene.textures.exists('crest_stone')) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0x3a2814, 1);
+    g.fillCircle(14, 14, 13);
+    g.lineStyle(2, 0xd9a25e, 1);
+    g.strokeCircle(14, 14, 12);
+    g.lineBetween(7, 7, 21, 21);
+    g.lineBetween(7, 21, 21, 7);
+    g.generateTexture('crest_stone', 28, 28);
+    g.destroy();
+  }
+
+  // Crest Medieval (28x28)
+  if (!scene.textures.exists('crest_medieval')) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0x161d33, 1);
+    g.fillTriangle(14, 26, 2, 4, 26, 4);
+    g.lineStyle(2, 0xffd166, 1);
+    g.strokeTriangle(14, 26, 2, 4, 26, 4);
+    g.fillStyle(0xffd166, 1);
+    g.fillRect(12, 6, 4, 14);
+    g.fillRect(6, 10, 16, 4);
+    g.generateTexture('crest_medieval', 28, 28);
+    g.destroy();
+  }
+
+  // Crest Modern (28x28)
+  if (!scene.textures.exists('crest_modern')) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0x0a1a20, 1);
+    g.fillRoundedRect(2, 2, 24, 24, 4);
+    g.lineStyle(2, 0x38fff0, 1);
+    g.strokeRoundedRect(2, 2, 24, 24, 4);
+    g.lineStyle(2, 0x38fff0, 1);
+    g.lineBetween(6, 14, 14, 6);
+    g.lineBetween(14, 6, 22, 14);
+    g.lineBetween(6, 20, 14, 12);
+    g.lineBetween(14, 12, 22, 20);
+    g.generateTexture('crest_modern', 28, 28);
+    g.destroy();
+  }
+
+  // Gold coin icon (16x16)
+  if (!scene.textures.exists('icon_gold')) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xd4af37, 1);
+    g.fillCircle(8, 8, 7);
+    g.fillStyle(0xffd700, 1);
+    g.fillCircle(8, 8, 5);
+    g.fillStyle(0xfffacd, 1);
+    g.fillCircle(6, 6, 2);
+    g.generateTexture('icon_gold', 16, 16);
+    g.destroy();
+  }
+
+  // XP gem icon (16x16)
+  if (!scene.textures.exists('icon_xp')) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0x00cccc, 1);
+    g.fillTriangle(8, 1, 15, 8, 8, 15);
+    g.fillTriangle(8, 1, 1, 8, 8, 15);
+    g.fillStyle(0x9dffef, 1);
+    g.fillTriangle(8, 3, 13, 8, 8, 13);
+    g.fillTriangle(8, 3, 3, 8, 8, 13);
+    g.generateTexture('icon_xp', 16, 16);
+    g.destroy();
+  }
+
+  // Evolve icon (18x18)
+  if (!scene.textures.exists('icon_evolve')) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.lineStyle(2, 0xd9b8ff, 1);
+    g.lineBetween(3, 11, 9, 4);
+    g.lineBetween(9, 4, 15, 11);
+    g.lineBetween(3, 16, 9, 9);
+    g.lineBetween(9, 9, 15, 16);
+    g.generateTexture('icon_evolve', 18, 18);
+    g.destroy();
+  }
+
+  // UI Victory laurel (48x48)
+  if (!scene.textures.exists('ui_victory')) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.lineStyle(3, 0xffd166, 1);
+    g.strokeCircle(24, 24, 18);
+    g.fillStyle(0xffd166, 1);
+    g.fillTriangle(24, 8, 20, 18, 28, 18);
+    g.generateTexture('ui_victory', 48, 48);
+    g.destroy();
+  }
+
+  // UI Defeat skull (48x48)
+  if (!scene.textures.exists('ui_defeat')) {
+    const g = scene.make.graphics({ x: 0, y: 0 }, false);
+    g.fillStyle(0xd64a4a, 1);
+    g.fillCircle(24, 20, 14);
+    g.fillRect(18, 26, 12, 10);
+    g.fillStyle(0x000000, 1);
+    g.fillCircle(19, 19, 3);
+    g.fillCircle(29, 19, 3);
+    g.fillRect(20, 32, 2, 4);
+    g.fillRect(26, 32, 2, 4);
+    g.generateTexture('ui_defeat', 48, 48);
+    g.destroy();
+  }
 }

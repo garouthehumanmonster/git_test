@@ -1,26 +1,25 @@
 # ⚔️ Timeline War
 
-A tiny, single-lane RTS played in the browser. March your army across the lane,
-evolve from the Stone Age to the Modern Age, and destroy the enemy tower before
-they destroy yours.
+[![CI](https://github.com/garouthehumanmonster/git_test/actions/workflows/ci.yml/badge.svg)](https://github.com/garouthehumanmonster/git_test/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-- **Deterministic sim** built around a fixed-step tick loop + a 32-bit Mulberry32 RNG.
-- **Three ages** (Stone → Medieval → Modern) each with three unit roles that
-  rock-paper-scissors one another:
+A lightweight, single-lane RTS played directly in your browser. March your army across the lane, evolve from the Stone Age to the Modern Age, and destroy the enemy tower before they destroy yours.
+
+![Timeline War Banner](public/banner.jpg)
+
+## Highlights
+
+- **Pure Deterministic Simulation**: Decoupled fixed-step tick loop (50ms) driven by a 32-bit Mulberry32 PRNG. Zero DOM or Phaser dependencies inside `src/sim/`. Netplay and replay ready.
+- **Three Civilizations & Strict Counter Triangle**:
   - **Swarm** beats Ranged
   - **Ranged** beats Tank
   - **Tank** beats Swarm
-- **Procedural pixel art** units and bases generated at boot, plus an
-  AI-generated parallax battlefield background and pixel-art hourglass/sword favicon.
-- **Self-injected procedural chiptune audio** built from scratch on the Web Audio
-  API — zero external audio files. Adaptive 16-step sequencer (bass + lead +
-  kick/snare/hat) and one-shot SFX for spawns, arrows, hits, gold pickups,
-  evolutions, base impacts, victory and defeat. Press **M** to mute.
-- **Phaser 4** renderer with HP bars, arcing projectiles, tinted hit particles,
-  floating damage numbers, animated flags, and a full HUD.
-- **Keyboard + mouse** controls (hotkeys `1`/`2`/`3` to spawn, `E` to evolve,
-  `M` to mute, `Space`/`R` to restart).
-- **Headless bot self-play** accessible via `npm run sim` for balance tuning.
+- **Veterancy Progression**: Units gain kills on the field. Promoted units earn rank chevrons (+25%/+55% damage, +15%/+30% HP, +6% speed) and an instant HP top-up.
+- **In-Age Upgrades**: Spend gold on the **Forge** (`U`, +15% DMG per rank) and **Armor** (`Y`, +15% HP per rank). 3 ranks per age. Multipliers stack multiplicatively with veterancy.
+- **CrazyGames SDK v3 Integration**: Built-in `gameplayStart()`, `gameplayStop()`, `happytime()` triggers, interstitial midgame ads on match restart, and a `🎁 +100g` rewarded ad button.
+- **Voice Announcer & Procedural Chiptune Audio**: Self-contained Web Audio chiptune sequencer (bass + lead + drums) + one-shot SFX + announcer voice callouts with Web Speech API fallback. Press **M** to mute.
+- **100% Procedural Pixel Art**: Units, bases, projectiles, particles, and flags are drawn procedurally at runtime in `src/render/textures.ts`. Zero bulky sprite sheets, keeping the bundle fast and lightweight.
+- **Headless Bot Self-Play**: Run CI balance matches via `npm run sim`.
 
 ## Running
 
@@ -33,43 +32,55 @@ npm run build      # production build into dist/
 npm run sim        # headless self-play match (pass a count, e.g. `npm run sim 100`)
 ```
 
-## How to play
+## Controls
 
-1. Click anywhere or press any key to unlock audio. You start in the Stone Age
-   with a pool of gold that grows over time.
-2. Click the three unit buttons at the bottom (or press `1`/`2`/`3`) to spawn:
-   - **Clubber / Man-at-Arms / Commando (Swarm)** — cheap, fast, shreds ranged units.
-   - **Mammoth / Knight / Heavy Tank (Tank)** — beefy, slow, crushes swarms.
-   - **Slinger / Archer / Sniper (Ranged)** — fragile, long range, melts tanks.
-3. Earn XP from kills; once you can afford the cost and hit the XP threshold,
-   press `E` (or click **EVOLVE**) to advance your civilization. Higher-age
-   units have better stats and deal a bonus against lower-age units.
-4. The AI will adapt its composition to counter yours and evolve on its own.
-5. First tower to 0 HP wins. Press `M` any time to mute the soundtrack/SFX.
+| Key | Action | Description |
+| :--- | :--- | :--- |
+| `1` | **Spawn Swarm** | Clubber / Man-at-Arms / Commando (cheap, fast, shreds ranged) |
+| `2` | **Spawn Tank** | Mammoth / Knight / Heavy Tank (beefy, slow, crushes swarms) |
+| `3` | **Spawn Ranged** | Slinger / Archer / Sniper (fragile, long range, melts tanks) |
+| `U` | **Forge Upgrade** | Increases army damage output by +15% per rank |
+| `Y` | **Armor Upgrade** | Increases army health pool by +15% per rank |
+| `E` | **Evolve Age** | Advances civilization (Stone → Medieval → Modern) |
+| `Space` | **Cycle Speed / Restart** | Toggles 1× / 2× / 3× game speed; restarts match on game over |
+| `P` / `Esc` | **Pause** | Pauses simulation and game clock |
+| `M` | **Mute** | Toggles all music, SFX, and voice audio |
+| `R` | **Restart** | Resets and restarts the match |
+
+*All actions can also be triggered directly via the on-screen HUD buttons.*
+
+---
 
 ## Architecture
 
 ```
 src/
-├─ main.ts                 # Phaser.Game bootstrap
-├─ sim/                    # Pure simulation (zero Phaser imports)
-│  ├─ types.ts             # State types, constants, unit-def balance table
-│  ├─ rng.ts               # Mulberry32 PRNG + mutable RNG wrapper
-│  └─ sim.ts               # Fixed-tick game loop, combat, targeting, AI
+├─ main.ts                     # Phaser game bootstrap & CrazyGames init
+├─ crazygames.ts               # CrazyGames SDK v3 wrapper (ads, lifecycle hooks)
 ├─ audio/
-│  └─ audio.ts             # Procedural chiptune engine (Web Audio API),
-│                          # sequencer + drum kit + one-shot SFX.
+│  ├─ audio.ts                 # Web Audio chiptune sequencer + one-shot SFX
+│  └─ voice.ts                 # Announcer voice system with Web Speech fallback
+├─ sim/                        # Pure headless simulation (zero Phaser imports)
+│  ├─ types.ts                 # Sim state types, unit defs, upgrade costs
+│  ├─ rng.ts                   # Mulberry32 PRNG + rehydratable RNG wrapper
+│  └─ sim.ts                   # Fixed-tick combat, targeting, pathing, AI
 └─ render/
-   ├─ BootScene.ts         # Loads assets and generates procedural textures
-   ├─ GameScene.ts         # Ties sim ticks to Phaser rendering + input
-   ├─ Hud.ts               # HUD (gold/xp/age, HP bars, spawn/evolve buttons)
-   ├─ textures.ts          # Procedural canvas textures for units/bases/etc.
-   └─ sprites.ts           # Shared unit sprite sizing helpers
+   ├─ BootScene.ts             # Loads backgrounds and generates runtime textures
+   ├─ GameScene.ts             # Render loop, particle emitters, screen shake, input
+   ├─ Hud.ts                   # Responsive HUD (HP bars, buttons, gold, XP, ads)
+   ├─ textures.ts              # Procedural vector/pixel canvas textures
+   └─ sprites.ts               # Sprite sizing and age tint helpers
 public/
-├─ bg_game.jpg             # AI-generated parallax battlefield background
-└─ favicon.png            # AI-generated pixel-art hourglass+sword logo
-test/                       # Vitest unit tests
-scripts/sim-match.ts        # Headless self-play runner for balance tuning
+├─ banner.jpg                  # 16:9 CrazyGames portal banner art
+├─ icon.jpg                    # 1:1 game icon & favicon
+├─ voice/                      # Announcer voice WAV audio callouts
+└─ bg_*.jpg                    # Per-age panoramic battlefield backgrounds
+test/                          # Vitest suite (sim logic + golden determinism replays)
+scripts/
+├─ sim-match.ts                # Headless bot-vs-bot runner
+└─ gen_voice.ps1               # Voice synthesis script
+.github/workflows/ci.yml       # GitHub Actions automated test & build pipeline
+LICENSE                        # MIT License
 ```
 
 The simulation is fully decoupled from rendering and deterministically
@@ -100,19 +111,21 @@ ticks avg/min/max: ~4400 / ~2800 / ~9500
 Run `npm run sim 50` to verify for yourself; tweak the tables in
 `src/sim/types.ts` to rebalance.
 
+## Testing & Determinism
+
+The game is strictly deterministic. The Mulberry32 PRNG state is preserved and rehydrated from `state.rngState` on every tick. The test suite includes:
+1. **Unit & Transition Tests**: State initialization, economic gates, age transitions, and cooldown locks.
+2. **Golden Replay Tests**: Replaying fixed intent sequences verifies byte-for-byte state alignment and hash equality across runs (`test/sim/determinism.test.ts`).
+3. **Headless Bot Balance Tuning**: Automated bot matches report win/loss rates to ensure fair competition (`npm run sim 50`).
+
 ## Assets
 
-- **Background:** AI-generated panoramic pixel-art battlefield (stone huts →
-  medieval castle → futuristic skyscrapers under a cosmic timeline rift).
-- **Favicon:** AI-generated pixel hourglass pierced by a glowing cyan sword.
-- **Units, bases, flags, projectiles, particles:** drawn procedurally at boot
-  with Phaser Graphics in `src/render/textures.ts` — no sprite sheets needed.
-- **Music and SFX:** synthesized at runtime by `src/audio/audio.ts` via the
-  Web Audio API.
+- **Banner & Icon:** 16:9 CrazyGames portal banner and 1:1 favicon / app icon.
+- **Backgrounds:** Panoramic pixel-art battlefield per civilization (stone, medieval, modern).
+- **Units, bases, flags, projectiles, particles, UI crests & icons:** Drawn procedurally at boot with Phaser Graphics in `src/render/textures.ts` — 0 KB external sprite overhead, no sprite sheets needed.
+- **Audio:** Web Audio chiptune synthesizer (`src/audio/audio.ts`) + announcer voice callouts with Web Speech API fallback (`src/audio/voice.ts`).
 
-## Future ideas
+## License
 
-- Multiple lanes + timeline-twist powers (replays/save-states as abilities).
-- Difficulty levels and a campaign ladder.
-- Netplay — the deterministic sim + input-streaming model is already set up for it.
+[MIT](LICENSE)
 
