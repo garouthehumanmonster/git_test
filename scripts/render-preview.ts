@@ -29,6 +29,7 @@ import {
   ICON_ULT_ART,
   TURRET_ART,
   TURRET_FIT,
+  TURRET_SILL,
 } from '../src/render/turretart';
 import { BASE_ART, BASE_FIT } from '../src/render/basearth';
 import { AGE_PROPS, PROP_LAYOUT } from '../src/render/propart';
@@ -104,7 +105,7 @@ function renderScene(age: Age): SoftGfx {
   const pal = paletteFor(age);
   fill(g, 0, 0, LANE_WIDTH, LANE_HEIGHT, pal.panel);
 
-  // 1. Painted sky band (authored 450x143, drawn at PIXEL_SCALE).
+  // 1. Painted sky band (authored 480x143, drawn at PIXEL_SCALE => 960 wide).
   blit(g, buildBackdrop(age), 0, 0, PIXEL_SCALE);
 
   // 2. Horizon silhouettes, sitting inside the painted band.
@@ -149,16 +150,19 @@ function renderScene(age: Age): SoftGfx {
       { k: 'r', x: 3, y: 2, w: 12, h: 3, c: 'light' },
     ];
     const flagRaster = rasterize(18, 20, flag, age, TEAM_COLORS[side]);
-    blit(g, flagRaster, x + (side === 'player' ? 26 : -26), groundY - 150, PIXEL_SCALE, 0xffffff, 1, 0, 0.5);
+    const towerTop = groundY - fit.foot * PIXEL_SCALE;
+    blit(g, flagRaster, x + (side === 'player' ? 10 : -10), towerTop - 2, PIXEL_SCALE, 0xffffff, 1, side === 'player' ? 0 : 1, 1);
   }
 
-  // 5b. Base-defence turret, standing beside each tower.
+  // 5b. Base-defence turret, planted on the tower at its age's sill height.
   for (const side of ['player', 'ai'] as const) {
     const turretFit = TURRET_FIT[age];
-    const tx = (side === 'player' ? PLAYER_BASE_X : AI_BASE_X) + (side === 'player' ? 26 : -26);
-    const turretGround = Math.round(laneGroundY(tx) - 4);
+    const bx = side === 'player' ? PLAYER_BASE_X : AI_BASE_X;
+    const baseFit = BASE_FIT[age][side];
+    const towerTop = Math.round(laneGroundY(bx)) + 12 - baseFit.foot * PIXEL_SCALE;
+    const tx = bx + (side === 'player' ? 14 : -14);
     const turretRaster = rasterize(turretFit.w, turretFit.h, TURRET_ART[age], age, TEAM_COLORS[side], turretFit.dx, turretFit.dy);
-    blit(g, turretRaster, tx, turretGround, PIXEL_SCALE, 0xffffff, 1, 0.5, 0.92);
+    blit(g, turretRaster, tx, towerTop + TURRET_SILL[age], PIXEL_SCALE, 0xffffff, 1, 0.5, 1);
   }
 
   // 6. Units with foot-line shadows and health pips, drawn back to front the

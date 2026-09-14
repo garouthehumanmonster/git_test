@@ -4,9 +4,12 @@ import { fitSprite, r, tri, type FittedSprite, type SpriteOp } from './spriteops
 /**
  * Unit art.
  *
- * Canvases are small on purpose — a unit is roughly a fifth of the lane's
- * height — and every silhouette is drawn at 1:1 with PIXEL_SCALE (2x), the same
- * texel density as the lane terrain, the props and the backdrop.
+ * Scale contract (see `test/render/art.test.ts`): human units are authored 28
+ * art px tall (56 on screen), beast/vehicle heavies 36 (72), base towers 76
+ * (152). Every silhouette is drawn at 1:1 with PIXEL_SCALE (2x), the same
+ * texel density as the lane terrain, the props and the backdrop — so a tower
+ * is ~2.7x a human and ~2x a war beast, and heavies read as half a tower, not
+ * as its rival.
  *
  * Faces point right; the renderer mirrors the sprite for the enemy side.
  * Silhouettes are shared between the three ages of a role so the counter
@@ -22,9 +25,9 @@ export interface UnitCanvas {
 }
 
 export const UNIT_SIZES: Record<UnitRole, UnitCanvas> = {
-  swarm: { w: 40, h: 26, foot: 24 },
-  tank: { w: 56, h: 30, foot: 28 },
-  ranged: { w: 34, h: 26, foot: 24 },
+  swarm: { w: 40, h: 28, foot: 26 },
+  tank: { w: 48, h: 36, foot: 34 },
+  ranged: { w: 36, h: 28, foot: 26 },
 };
 
 /** Kept for backwards-compatible imports in the HUD/preview. */
@@ -42,8 +45,8 @@ const CLUBBER: SpriteOp[] = [
   r(8, 8, 5, 9, 'body'),
   r(9, 11, 3, 3, 'accent'),
   // legs + bare feet
-  r(14, 16, 3, 8, 'mid'), r(18, 16, 3, 8, 'mid'),
-  r(13, 24, 4, 1, 'panel'), r(18, 24, 4, 1, 'panel'),
+  r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
+  r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
   // bare torso with a team sash and leather belt
   r(13, 9, 8, 7, 'edge'),
   r(14, 9, 7, 2, 'body'),
@@ -64,56 +67,57 @@ const CLUBBER: SpriteOp[] = [
 ];
 
 /**
- * War mammoth. Read as an animal first: a domed skull, a tall shoulder hump
- * sloping down to low hindquarters, and daylight under the belly between the
- * hind and fore legs. The earlier slab body (one 34x11 rectangle with four dark
- * leg slots) merged with its neighbours into a pile of outlined rectangles.
+ * War mammoth. Read as an animal first: a domed skull taller than the rider,
+ * a trunk hanging down the front of the chest, tusks sweeping up past it, a
+ * high shoulder hump sloping to low hindquarters and daylight under the belly
+ * between the leg pairs. Kept inside a 48-wide canvas so the beast — however
+ * massive — never out-sizes the base tower (54 wide).
  */
 const WAR_MAMMOTH: SpriteOp[] = [
-  // legs — near legs in body tone so they read as limbs, far legs darkened.
-  r(7, 20, 4, 8, 'edge'), r(11, 20, 3, 8, 'mid'),
-  r(29, 20, 4, 8, 'edge'), r(33, 20, 3, 8, 'mid'),
-  r(6, 28, 6, 1, 'panel'), r(11, 28, 4, 1, 'panel'),
-  r(28, 28, 6, 1, 'panel'), r(33, 28, 4, 1, 'panel'),
-  // body: barrel, then the hump stepping up to the skull
-  r(4, 13, 34, 7, 'edge'),
-  r(20, 10, 17, 4, 'edge'),
-  r(25, 7, 11, 3, 'edge'),
-  r(5, 18, 32, 2, 'mid'),
-  r(23, 9, 8, 1, 'body'),
-  r(8, 12, 8, 1, 'body'),
-  r(14, 13, 4, 5, 'mid'),
-  r(10, 15, 3, 4, 'body'),
+  // legs — near pair in body tone so they read as limbs, far pair darkened
+  r(8, 24, 4, 10, 'edge'), r(13, 24, 3, 10, 'mid'),
+  r(29, 24, 4, 10, 'edge'), r(34, 24, 3, 10, 'mid'),
+  r(7, 34, 6, 1, 'panel'), r(13, 34, 4, 1, 'panel'),
+  r(28, 34, 6, 1, 'panel'), r(34, 34, 4, 1, 'panel'),
+  // body: barrel, then the hump stepping up to the skull crown
+  r(3, 15, 35, 9, 'edge'),
+  r(17, 11, 21, 5, 'edge'),
+  r(23, 8, 14, 4, 'edge'),
+  r(4, 21, 33, 2, 'mid'),
+  r(20, 10, 9, 1, 'body'),
+  r(6, 14, 9, 1, 'body'),
+  r(12, 16, 4, 6, 'mid'),
+  r(9, 18, 3, 4, 'body'),
   // tail with a tuft
-  r(2, 13, 2, 3, 'edge'), r(1, 16, 2, 4, 'mid'), r(2, 20, 2, 2, 'edge'),
-  // skull, dome, ear, cheek, eye
-  r(37, 8, 9, 7, 'edge'),
-  r(39, 5, 6, 3, 'edge'),
-  r(36, 9, 3, 4, 'mid'),
-  r(40, 10, 3, 3, 'body'),
-  r(43, 10, 1, 1, 'ink'),
-  // trunk curling down in front of the chest
-  r(45, 12, 2, 6, 'edge'), r(44, 18, 3, 2, 'edge'), r(44, 20, 3, 1, 'mid'),
-  // tusks sweeping forward and up
-  r(43, 16, 2, 2, 'light'), r(45, 15, 3, 2, 'light'),
-  r(47, 12, 2, 3, 'light'), r(48, 10, 1, 2, 'light'),
-  // rider: fur-clad chief with a spear and pennant
-  r(20, 6, 5, 5, 'mid'),
-  r(16, 10, 11, 2, 'team'),
-  r(19, 3, 6, 6, 'body'),
-  r(19, 3, 6, 1, 'team'),
-  r(20, 0, 4, 3, 'body'),
-  r(19, 0, 6, 1, 'panel'),
-  r(25, 0, 1, 9, 'edge'),
-  tri(26, 0, 33, 2, 26, 5, 'team'),
+  r(1, 16, 2, 4, 'edge'), r(0, 19, 2, 4, 'mid'), r(1, 23, 2, 2, 'edge'),
+  // skull: high domed crown over a short face, ear, cheek, eye
+  r(36, 9, 9, 8, 'edge'),
+  r(38, 5, 6, 5, 'edge'),
+  r(35, 10, 3, 5, 'mid'),
+  r(39, 12, 3, 3, 'body'),
+  r(42, 11, 1, 1, 'ink'),
+  // trunk down the front of the chest, curling at the tip
+  r(44, 13, 2, 8, 'edge'), r(43, 21, 3, 2, 'edge'), r(43, 23, 3, 1, 'mid'),
+  // tusks sweeping forward and up past the trunk
+  r(42, 19, 2, 2, 'light'), r(44, 17, 3, 2, 'light'),
+  r(46, 13, 1, 4, 'light'), r(45, 11, 1, 2, 'light'),
+  // rider: fur-clad chief with a team blanket, spear and pennant
+  r(21, 8, 5, 5, 'mid'),
+  r(17, 12, 12, 2, 'team'),
+  r(20, 4, 6, 6, 'body'),
+  r(20, 4, 6, 1, 'team'),
+  r(21, 1, 4, 3, 'body'),
+  r(20, 1, 6, 1, 'panel'),
+  r(26, 0, 1, 9, 'edge'),
+  tri(27, 0, 34, 2, 27, 5, 'team'),
 ];
 
 const SLINGER: SpriteOp[] = [
   // rock pouch
   r(12, 10, 4, 4, 'body'),
   // legs + feet
-  r(13, 16, 4, 8, 'body'), r(18, 16, 4, 8, 'body'),
-  r(12, 24, 5, 1, 'panel'), r(18, 24, 5, 1, 'panel'),
+  r(13, 16, 4, 10, 'body'), r(18, 16, 4, 10, 'body'),
+  r(12, 26, 5, 1, 'panel'), r(18, 26, 5, 1, 'panel'),
   // torso, team sash, hide skirt
   r(12, 9, 9, 7, 'body'),
   r(12, 11, 9, 1, 'team'),
@@ -138,8 +142,8 @@ const MAN_AT_ARMS: SpriteOp[] = [
   r(9, 9, 2, 6, 'light'),
   r(7, 11, 6, 2, 'light'),
   // legs in mail + sabatons
-  r(14, 16, 3, 8, 'mid'), r(18, 16, 3, 8, 'mid'),
-  r(13, 24, 4, 1, 'panel'), r(18, 24, 4, 1, 'panel'),
+  r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
+  r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
   // mail hauberk with pauldrons and a tabard stripe
   r(13, 9, 8, 7, 'edge'),
   r(12, 9, 10, 2, 'body'),
@@ -159,31 +163,33 @@ const MAN_AT_ARMS: SpriteOp[] = [
 
 const KNIGHT_HORSE: SpriteOp[] = [
   // horse legs + hooves
-  r(6, 20, 4, 8, 'mid'), r(13, 20, 4, 8, 'mid'),
-  r(24, 20, 4, 8, 'mid'), r(31, 20, 4, 8, 'mid'),
-  r(5, 28, 5, 1, 'panel'), r(12, 28, 5, 1, 'panel'),
-  r(23, 28, 5, 1, 'panel'), r(30, 28, 5, 1, 'panel'),
+  r(7, 24, 4, 10, 'edge'), r(13, 24, 4, 10, 'mid'),
+  r(28, 24, 4, 10, 'mid'), r(34, 24, 4, 10, 'edge'),
+  r(6, 34, 6, 1, 'panel'), r(12, 34, 6, 1, 'panel'),
+  r(27, 34, 6, 1, 'panel'), r(33, 34, 6, 1, 'panel'),
   // tail, barrel, caparison with a team trim
-  r(2, 12, 3, 6, 'edge'),
-  r(5, 12, 32, 10, 'edge'),
-  r(7, 10, 28, 5, 'body'),
-  r(7, 10, 28, 1, 'team'),
-  // neck, head, mane, muzzle, eye
-  r(36, 6, 6, 8, 'mid'),
-  r(41, 4, 7, 7, 'mid'),
-  r(47, 9, 3, 3, 'edge'),
-  r(46, 5, 1, 1, 'ink'),
-  r(39, 2, 3, 4, 'edge'),
-  // rider: plate, helm, shield
-  r(13, 2, 8, 9, 'edge'),
-  r(12, 2, 10, 1, 'team'),
-  r(15, 0, 5, 4, 'light'),
-  r(20, 2, 6, 9, 'body'),
-  r(22, 4, 2, 5, 'light'),
+  r(2, 14, 3, 8, 'edge'),
+  r(5, 15, 34, 10, 'edge'),
+  r(7, 12, 30, 5, 'body'),
+  r(7, 12, 30, 1, 'team'),
+  // arched neck, head, mane, muzzle, eye
+  r(37, 7, 7, 10, 'edge'),
+  r(42, 4, 6, 8, 'edge'),
+  r(45, 8, 2, 3, 'mid'),
+  r(45, 6, 1, 1, 'ink'),
+  r(38, 3, 3, 5, 'mid'),
+  // rider: plate, helm with a plume and visor, shield
+  r(14, 3, 8, 10, 'edge'),
+  r(13, 3, 10, 1, 'team'),
+  r(16, 0, 5, 4, 'light'),
+  r(15, 0, 2, 2, 'team'),
+  r(19, 2, 1, 1, 'ink'),
+  r(22, 3, 6, 10, 'body'),
+  r(24, 5, 2, 6, 'light'),
   // couched lance with a pennant
-  r(26, 6, 28, 2, 'edge'),
-  tri(54, 5, 55, 7, 54, 9, 'light'),
-  tri(34, 0, 44, 3, 34, 6, 'team'),
+  r(27, 7, 18, 2, 'edge'),
+  tri(45, 6, 46, 8, 45, 10, 'light'),
+  tri(33, 0, 43, 3, 33, 6, 'team'),
 ];
 
 const ARCHER: SpriteOp[] = [
@@ -191,8 +197,8 @@ const ARCHER: SpriteOp[] = [
   r(9, 8, 5, 8, 'body'),
   r(9, 5, 1, 3, 'light'), r(12, 4, 1, 4, 'light'),
   // legs + boots
-  r(14, 16, 3, 8, 'mid'), r(18, 16, 3, 8, 'mid'),
-  r(13, 24, 4, 1, 'panel'), r(18, 24, 4, 1, 'panel'),
+  r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
+  r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
   // gambeson with a team trim
   r(13, 9, 8, 7, 'edge'),
   r(12, 9, 10, 2, 'body'),
@@ -219,8 +225,8 @@ const COMMANDO: SpriteOp[] = [
   r(8, 1, 1, 7, 'light'),
   r(8, 9, 1, 1, 'highlight'),
   // legs + boots
-  r(14, 16, 3, 8, 'mid'), r(18, 16, 3, 8, 'mid'),
-  r(13, 24, 4, 1, 'panel'), r(18, 24, 4, 1, 'panel'),
+  r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
+  r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
   // plate carrier over fatigues
   r(13, 9, 8, 7, 'body'),
   r(12, 10, 10, 3, 'edge'),
@@ -242,31 +248,30 @@ const COMMANDO: SpriteOp[] = [
 ];
 
 const HEAVY_TANK: SpriteOp[] = [
-  // track assembly
-  r(2, 20, 38, 6, 'mid'),
-  r(4, 21, 4, 4, 'panel'), r(10, 21, 4, 4, 'panel'), r(16, 21, 4, 4, 'panel'),
-  r(22, 21, 4, 4, 'panel'), r(28, 21, 4, 4, 'panel'), r(34, 21, 4, 4, 'panel'),
-  r(2, 19, 38, 2, 'edge'),
+  // track assembly reaching the ground row
+  r(2, 24, 40, 2, 'edge'),
+  r(2, 26, 40, 9, 'mid'),
+  r(4, 27, 4, 5, 'panel'), r(10, 27, 4, 5, 'panel'), r(16, 27, 4, 5, 'panel'),
+  r(22, 27, 4, 5, 'panel'), r(28, 27, 4, 5, 'panel'), r(34, 27, 4, 5, 'panel'),
   // hull, glacis plate, team panel
-  r(4, 12, 30, 7, 'body'),
-  r(5, 13, 27, 1, 'body'),
-  r(5, 12, 26, 1, 'accent'),
-  r(6, 15, 8, 3, 'team'),
-  r(33, 12, 8, 7, 'body'),
+  r(4, 18, 34, 8, 'body'),
+  r(6, 19, 28, 1, 'accent'),
+  r(6, 18, 26, 1, 'body'),
+  r(6, 21, 8, 4, 'team'),
+  r(36, 18, 6, 8, 'body'),
   // turret, hatch, antenna
-  r(9, 5, 18, 8, 'edge'),
-  r(10, 5, 16, 1, 'body'),
-  r(10, 8, 16, 4, 'body'),
-  r(10, 5, 16, 1, 'body'),
-  r(10, 2, 6, 3, 'mid'),
-  r(24, 1, 1, 4, 'light'),
-  // main gun
-  r(26, 6, 3, 5, 'mid'),
-  r(29, 7, 17, 3, 'body'),
-  r(45, 5, 7, 7, 'light'),
+  r(10, 8, 20, 10, 'edge'),
+  r(11, 8, 18, 2, 'body'),
+  r(11, 12, 18, 4, 'body'),
+  r(12, 5, 6, 3, 'mid'),
+  r(26, 2, 1, 5, 'light'),
+  // main gun: mantlet, barrel, muzzle brake
+  r(29, 9, 3, 5, 'mid'),
+  r(32, 10, 12, 3, 'body'),
+  r(43, 8, 4, 7, 'light'),
   // cupola machine gun
-  r(19, 2, 11, 2, 'mid'),
-  r(28, 2, 6, 1, 'panel'),
+  r(20, 4, 11, 2, 'mid'),
+  r(29, 4, 6, 1, 'panel'),
 ];
 
 const SNIPER: SpriteOp[] = [
@@ -275,8 +280,8 @@ const SNIPER: SpriteOp[] = [
   r(6, 9, 16, 1, 'edge'),
   r(6, 9, 4, 4, 'body'), r(14, 17, 5, 5, 'body'), r(8, 19, 5, 3, 'edge'),
   // kneeling legs
-  r(13, 20, 5, 4, 'edge'), r(18, 18, 5, 6, 'body'),
-  r(12, 24, 6, 1, 'panel'), r(18, 24, 6, 1, 'panel'),
+  r(13, 22, 5, 4, 'edge'), r(18, 20, 5, 6, 'body'),
+  r(12, 26, 6, 1, 'panel'), r(18, 26, 6, 1, 'panel'),
   // torso
   r(12, 10, 9, 9, 'body'),
   r(12, 10, 9, 1, 'team'),

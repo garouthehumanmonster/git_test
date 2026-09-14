@@ -159,6 +159,32 @@ describe('tower art', () => {
   }
 });
 
+describe('scale hierarchy', () => {
+  it('keeps every tower taller and wider than any unit in its age', () => {
+    for (const age of AGES) {
+      const tower = BASE_FIT[age].player;
+      for (const role of ROLES) {
+        const unit = UNIT_FIT[age][role];
+        expect(tower.h).toBeGreaterThan(unit.h);
+        expect(tower.w).toBeGreaterThanOrEqual(unit.w);
+        // And it dominates on screen: at least 1.8x the tallest unit's height.
+        expect(tower.h * PIXEL_SCALE).toBeGreaterThanOrEqual(unit.h * PIXEL_SCALE * 1.8);
+      }
+    }
+  });
+
+  it('reads heavies as half a tower and humans as distinctly smaller', () => {
+    for (const age of AGES) {
+      const towerH = BASE_FIT[age].player.h * PIXEL_SCALE;
+      const human = UNIT_FIT[age].swarm.h * PIXEL_SCALE;
+      const heavy = UNIT_FIT[age].tank.h * PIXEL_SCALE;
+      expect(heavy).toBeGreaterThan(human); // the beast stands over the man
+      expect(heavy * 2).toBeLessThan(towerH * 1.05); // but never rivals the tower
+      expect(human * 2).toBeLessThan(towerH); // two men stacked stay under the roofline
+    }
+  });
+});
+
 describe('prop art', () => {
   for (const age of AGES) {
     it(`${age} defines a prop for every slot in the layout, on palette and outlined`, () => {

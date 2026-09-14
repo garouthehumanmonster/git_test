@@ -7,12 +7,12 @@ guessing. Everything below is committed; the repo is the source of truth.
 
 | | |
 | --- | --- |
-| Branch | `arena/01a09fdd-git-test` (HEAD `d98ae4e`) |
-| Remote | `garouthehumanmonster/git_test` — branch pushed, **PR #3** open against `main` |
+| Branch | `arena/01a0a02e-git-test` (branched from `arena/01a09fdd-git-test` @ `b79b513`) |
+| Remote | `garouthehumanmonster/git_test` — branch pushed, **PR #3** open against `main`; this branch's fixes ride in their own PR (see git log) |
 | Working tree | clean |
-| Verified last run | `npx tsc --noEmit` clean · `npx vitest run` **79/79** · `npm run sim 25` **0 timeouts** · `npm run build` clean · `npm run art:build` no atlas drift |
+| Verified last run | `npx tsc --noEmit` clean · `npx vitest run` **81/81** · `npm run sim 25` **0 timeouts, 52% wins** · `npm run build` clean · `npm run art:build` no atlas drift |
 
-The session is pinned to `arena/01a09fdd-git-test`; do all work there and open PRs
+The session is pinned to `arena/01a0a02e-git-test`; do all work there and open PRs
 from it (that is how earlier work reached `main`, e.g. PR #2).
 
 ## What is finished
