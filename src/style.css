@@ -8,11 +8,10 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background-color: #0b0b0d;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: monospace;
+  background: #0b0918;
+  color: #e9e9f1;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Consolas', monospace;
+  -webkit-font-smoothing: antialiased;
 }
 
 #app {
@@ -21,4 +20,16 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  background: #0b0918;
+}
+
+canvas {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px rgba(134, 59, 255, 0.35),
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 80px rgba(134, 59, 255, 0.15);
 }

@@ -1,16 +1,20 @@
 {
   "name": "timeline-war",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "description": "Timeline War — a tiny 1-lane RTS where you evolve from club-wielding cavemen to modern snipers.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "sim": "node -e \"console.log('0 matches')\""
+    "test:watch": "vitest",
+    "sim": "tsx scripts/sim-match.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "tsx": "^4.19.0",
     "typescript": "~6.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.0"
