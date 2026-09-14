@@ -1,19 +1,26 @@
-# Timeline War — Self Review (post-RoN-inspired pass)
+# Self-Review — Timeline War
 
-## Rating: 8.3 / 10 (up from 7.8)
+A short RoN-inspired web RTS. Scorecard after latest pass: **8.7 / 10**.
 
-### What's new since last review
-- **Veterancy** — units earn kills, promote at 3/6 kills (gold chevron at vet 1, cyan chevron at vet 2) with +20–45% HP / +25–55% DMG / +5–15% speed. Nearest-attacker credit, HP top-up on promotion, pop-in chevron animation.
-- **Pause (P/Esc)** + **speed toggle (Space)** — top-right ❚❚ and ▶ 1x buttons cycle 1×/2×/3×, game fully freezes during pause with overlay.
-- Themed UI complete — per-age palettes, crests, gold/xp/evolve icons, title banner, victory/defeat art.
-- Per-age towers + backgrounds with crossfade.
+## What's working
+- **Lane push RTS loop** with three role counters (swarm → ranged → tank → swarm), gold per tick, and 3 ages (Stone → Medieval → Modern) each with stronger units.
+- **Veterancy** (gold/cyan chevrons at 3/6 kills, +25%/+55% dmg + +15%/+30% HP + +6% speed) with chevron pop animation and HP top-up on promo.
+- **In-age upgrades** — Forge (+15% DMG per rank, U) and Armor (+15% HP per rank, Y). Three ranks each; per-age costs (stone 25/50/90, medieval 40/80/140, modern 70/130/220). Multipliers stack multiplicatively with vet. Retroactive (armor tops up existing units, forge applies live). Pips on HUD buttons show current rank; floating "↑ FORGE II" style text on purchase.
+- **Pause / speed controls** (P/Esc pause, Space cycles 1×/2×/3×) with top-right ❚❚/▶/♪ buttons and pause overlay.
+- **AI** counters your composition, evolves, and buys forge/armor (weights armor when base HP low).
+- **Audio** (procedural via Web Audio): per-age music layers, melee/arrow/gold/evolve/victory/defeat sfx, click/error, base-hit tension ramps.
+- **Visuals** per-age backgrounds, lane palette swap on evolve, unit shadows + walk bob + attack recoil, projectile arcs, smoke on low HP towers, floating damage/gold text, screen shake + hit-stop, victory/defeat panels.
+- **Controls**: 1/2/3 spawn, U forge, Y armor, E evolve, Space speed, P/Esc pause, R/M restart/mute; HUD buttons for everything.
+- **Mobile/portrait preview** fixed: solid dark backdrop (#0b0918), full-canvas fill rect, forced camera reset, rotate hint overlay for narrow/portrait viewports.
 
-### Remaining gaps vs. Rise of Nations
-The two biggest RoN-flavored things still missing:
-1. **In-age upgrades** (e.g. "+20% HP for all units" or "weapons sharpening +DMG") purchased with gold via a U key.
-2. **Buildings that unlock unit types** (barracks → swarm, archery/range → ranged, stable/factory → tank) placed in front of your tower, with their own HP — lose a building and you lose that unit type until you can afford to rebuild.
+## Still missing / next up (highest value)
+1. **Buildings that unlock unit types** — Barracks→swarm, Range→ranged, Factory/Arcade→tank, on the field with HP; lose a building and you can't produce that role. Big RoN/TAK mechanic.
+2. **Mini-map / vision fog** — cheaply indicate battlefield state for the longer fights.
+3. **A few more units per age** (cavalry in medieval, artillery in modern) to widen composition choices.
+4. **Tutorial tooltip on first play** explaining counters and hotkeys.
+5. **Larger audio variety** — more per-age music layers, an evolve jingle.
 
-Economy/food/trade are too scope-heavy for this short-session web game and would dilute the tight loop. I'll stick to #1 (in-age upgrades) this pass — it's the best feel-per-effort win without changing the game's identity.
-
-### Self-improvement prompt (executing next)
-> Add an **in-age upgrade system**: a new "U" hotkey + button on the HUD that purchases a stackable **Forge Upgrade** (+15% DMG to all current and future units, costs 25/60/120g in stone/medieval/modern, max 3 ranks) and a **Armor Upgrade** (+15% HP, same cost). Show upgrade ranks as small pips on the HUD, apply to newly-spawned units immediately, let AI also buy upgrades periodically. Build/test/typecheck clean, push as a milestone.
+## Quality gates
+- TypeScript: clean (`tsc --noEmit` passes).
+- Tests: 16 passing (`vitest run`).
+- Build: clean (`vite build`, 1.4 MB JS bundle — heavy because of Phaser; gzip 376 KB).
