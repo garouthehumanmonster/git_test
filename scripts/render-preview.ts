@@ -17,7 +17,7 @@ import { SoftGfx, blit } from './lib/softgfx';
 import { buildBackdrop } from './build-backdrops';
 import { PIXEL_SCALE, TEAM_COLORS, paletteFor } from '../src/render/palette';
 import {
-  AI_BASE_X, BASE_HP, LANE_HEIGHT, LANE_WIDTH, PLAYER_BASE_X, UNIT_DEFS,
+  AI_BASE_X, BASE_HP, LANE_HEIGHT, LANE_WIDTH, PLAYER_BASE_X, UNIT_DEFS, laneYOffsetFor,
 } from '../src/sim/types';
 import type { Age, UnitRole } from '../src/sim/types';
 import { UNIT_ART, UNIT_FIT } from '../src/render/unitart';
@@ -74,20 +74,30 @@ function ellipse(g: SoftGfx, cx: number, cy: number, w: number, h: number, color
   }
 }
 
-/** Representative battlefield layout used for the preview render. */
+/**
+ * Representative battlefield layout used for the preview render. Each unit
+ * carries the id it would have in a live match, because the id drives its lane
+ * slot — the preview then staggers units exactly the way `GameScene` does.
+ */
 const LINE: Array<[UnitRole, 'player' | 'ai', number, number]> = [
-  ['tank', 'player', 206, 0],
-  ['swarm', 'player', 262, 1],
-  ['swarm', 'player', 296, -1],
-  ['ranged', 'player', 336, 1],
-  ['swarm', 'player', 380, -1],
-  ['ranged', 'ai', 452, -1],
-  ['swarm', 'ai', 508, 0],
-  ['ranged', 'ai', 556, 1],
-  ['swarm', 'ai', 596, -1],
-  ['swarm', 'ai', 630, 1],
-  ['tank', 'ai', 700, 0],
+  ['tank', 'player', 206, 2],
+  ['swarm', 'player', 262, 4],
+  ['swarm', 'player', 296, 1],
+  ['ranged', 'player', 336, 3],
+  ['swarm', 'player', 380, 5],
+  ['ranged', 'ai', 452, 7],
+  ['swarm', 'ai', 508, 9],
+  ['ranged', 'ai', 556, 6],
+  ['swarm', 'ai', 596, 8],
+  ['swarm', 'ai', 630, 10],
+  ['tank', 'ai', 700, 12],
 ];
+
+/** Matches `GameScene.unitGroundY`: lane slope + full lane slot + id jitter. */
+const CROWD_SPREAD = 2.4;
+function unitGroundY(x: number, id: number): number {
+  return laneGroundY(x) + laneYOffsetFor(id) + ((id * 37) % 9 - 4) * CROWD_SPREAD;
+}
 
 function renderScene(age: Age): SoftGfx {
   const g = new SoftGfx(LANE_WIDTH, LANE_HEIGHT);
@@ -151,9 +161,13 @@ function renderScene(age: Age): SoftGfx {
     blit(g, turretRaster, tx, turretGround, PIXEL_SCALE, 0xffffff, 1, 0.5, 0.92);
   }
 
-  // 6. Units with foot-line shadows and health pips.
-  for (const [role, side, x, spread] of LINE) {
-    const groundY = Math.round(laneGroundY(x) + spread * 8 + 2);
+  // 6. Units with foot-line shadows and health pips, drawn back to front the
+  // way Phaser's y-based depth sort lays them out.
+  const line: Array<[UnitRole, 'player' | 'ai', number, number, number]> = LINE
+    .map(([role, side, x, id]) => [role, side, x, id, unitGroundY(x, id)])
+    .sort((a, b) => a[4] - b[4]);
+  for (const [role, side, x, _id, groundYRaw] of line) {
+    const groundY = Math.round(groundYRaw + 2);
     const fit = UNIT_FIT[age][role];
     ellipse(g, x, groundY - 1, fit.w * 0.9, 7, 0x000000, 0.35);
     const raster = rasterize(fit.w, fit.h, UNIT_ART[age][role], age, TEAM_COLORS[side], fit.dx, fit.dy);

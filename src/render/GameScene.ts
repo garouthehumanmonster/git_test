@@ -766,10 +766,16 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Screen row a unit's feet touch: lane slope + its own lane offset. */
+  /**
+   * Screen row a unit's feet touch: lane slope + its lane slot.
+   *
+   * The sim's 48px corridor is drawn at full scale. Squeezing it to 0.75 put
+   * five ranks inside 36 screen pixels while the sprites are 52-60px tall, so a
+   * queued column painted over itself into one slab of outlined rectangles.
+   */
   private unitGroundY(u: UnitState): number {
     const spread = ((u.id * 37) % 9 - 4) * CROWD_SPREAD;
-    return laneGroundY(u.x) + u.yOffset * 0.75 + spread;
+    return laneGroundY(u.x) + u.yOffset + spread;
   }
 
   private createUnitGfx(u: UnitState): UnitGfx {
@@ -1032,6 +1038,7 @@ export class GameScene extends Phaser.Scene {
         const tp = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
         const bx = ev.side === 'player' ? PLAYER_BASE_X + 26 : AI_BASE_X - 26;
         this.addFloat(bx, LANE_TOP + 34, `TURRET ${ev.rank}`, tp.highlight, 46);
+        if (ev.side === 'player' && ev.rank === 1) voice.play('turret_online');
       } else if (ev.kind === 'ultCast') {
         const cp = paletteFor(ev.age);
         this.hud.announce(ULT_DEFS[ev.age].label.toUpperCase(), ev.side === 'player' ? 'incoming' : 'brace!', 1400);
@@ -1043,7 +1050,8 @@ export class GameScene extends Phaser.Scene {
       } else if (ev.kind === 'collapse') {
         this.hud.announce('TIMELINE COLLAPSE', 'both bases are decaying - finish it', 3000);
         this.shake(900, 7);
-        audio.sfxDefeat();
+        audio.sfxCollapse();
+        voice.play('collapse');
       } else if (ev.kind === 'gold') {
         const gp = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
         this.addFloat(
@@ -1142,7 +1150,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.turretKick[side] = 5;
     this.shake(70, 2);
-    if (side === 'ai') audio.sfxBaseHit(); else audio.sfxArrow(age);
+    audio.sfxTurret(age);
   }
 
   /** Superweapon impact: a flying projectile into a blast, plus shake and flash. */
@@ -1191,7 +1199,7 @@ export class GameScene extends Phaser.Scene {
     this.shake(220, STRIKE_SHAKE[kind]);
     this.cameras.main.flash(90, 255, kind === 'volley' ? 150 : 220, 120, false);
     this.hitStopMs = Math.max(this.hitStopMs, 45);
-    audio.sfxBaseHit();
+    audio.sfxStrike(kind);
   }
 
   private addFloat(x: number, y: number, text: string, color: number, ttl: number): void {
