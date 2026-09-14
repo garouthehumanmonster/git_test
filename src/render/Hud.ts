@@ -120,6 +120,7 @@ export class Hud {
   onToggleMusic?: () => void;
   onTogglePause?: () => void;
   onCycleSpeed?: () => void;
+  onRewardedAdRequest?: () => void;
 
   private upgradeBtns: Record<'forge'|'armor', {
     bg: Phaser.GameObjects.Rectangle;
@@ -244,6 +245,12 @@ export class Hud {
     this.pauseBtn = s.add.text(w - 120, 66, '❚❚', { ...btnStyle, color: '#ffd166' })
       .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
     this.pauseBtn.on('pointerdown', () => this.onTogglePause?.());
+
+    const rewardBtn = s.add.text(w - 152, 66, '🎁 +100g (Ad)', { ...btnStyle, color: '#ffd166', fontStyle: 'bold' })
+      .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
+    rewardBtn.on('pointerdown', () => this.onRewardedAdRequest?.());
+    rewardBtn.on('pointerover', () => rewardBtn.setStyle({ color: '#ffffff' }));
+    rewardBtn.on('pointerout', () => rewardBtn.setStyle({ color: '#ffd166' }));
 
     // HP bars (framed)
     const barW = Hud.BAR_W, barH = Hud.BAR_H;

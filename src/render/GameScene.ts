@@ -19,6 +19,14 @@ import { canEvolve, canSpawn, canUpgrade, createInitialState, tick } from '../si
 import { Hud } from './Hud';
 import { ROLE_SIZES, unitKey } from './sprites';
 import { audio } from '../audio/audio';
+import { voice } from '../audio/voice';
+import {
+  crazyGameplayStart,
+  crazyGameplayStop,
+  crazyHappytime,
+  crazyShowMidgameAd,
+  crazyShowRewardedAd,
+} from '../crazygames';
 
 // ---- Art sizing constants (pixels on screen) -----------------------------
 // Target heights for each visual element regardless of source texture size.
@@ -88,6 +96,9 @@ export class GameScene extends Phaser.Scene {
     this.tickAccumMs = 0;
     this.gameOverHandled = false;
     this.pendingIntents = [];
+
+    crazyGameplayStart();
+    voice.play('battle_begins', 5000);
 
     // Solid backdrop so nothing bleeds through as transparent checkers.
     this.cameras.main.setBackgroundColor('#0b0918');
@@ -160,12 +171,21 @@ export class GameScene extends Phaser.Scene {
     this.hud.onSpawnRequest = (role) => this.trySpawn('player', role);
     this.hud.onEvolveRequest = () => this.tryEvolve('player');
     this.hud.onUpgradeForge = () => this.tryUpgrade('forge');
-    this.hud.onUpgradeArmor = () => this.tryUpgrade('armor');
-    this.hud.onRestartRequest = () => this.restart();
+    this.hud.onRestartRequest = () => safeRestart();
+    this.hud.onRewardedAdRequest = () => {
+      crazyShowRewardedAd(() => {
+        this.sim.player.gold += 100;
+        voice.play('reinforcements');
+        audio.sfxGold();
+        this.addFloat(PLAYER_BASE_X + 40, LANE_TOP - 20, '+100g REWARD!', 0xffd166, 60);
+      });
+    };
     this.hud.onToggleMusic = () => { audio.toggleMusic(); this.hud.setMusic(!audio.musicIsMuted()); };
     this.hud.onTogglePause = () => this.togglePause();
     this.hud.onCycleSpeed = () => this.cycleSpeed();
     this.hud.setMusic(!audio.musicIsMuted());
+
+    const safeRestart = () => crazyShowMidgameAd(() => this.restart());
 
     // Audio unlock
     const unlock = async () => {
@@ -188,7 +208,7 @@ export class GameScene extends Phaser.Scene {
       const mKey = () => { audio.toggleMusic(); this.hud.setMusic(!audio.musicIsMuted()); };
       if (e.key === 'p' || e.key === 'P' || e.code === 'Escape') { this.togglePause(); return; }
       if (this.sim.result !== 'playing') {
-        if (e.code === 'Space' || e.key === 'r' || e.key === 'R') this.restart();
+        if (e.code === 'Space' || e.key === 'r' || e.key === 'R') safeRestart();
         else if (e.key === 'm' || e.key === 'M') mKey();
         return;
       }
@@ -333,7 +353,15 @@ export class GameScene extends Phaser.Scene {
       this.gameOverHandled = true;
       this.hud.showGameOver(this.sim.result);
       audio.setMusicState(this.sim.result === 'win' ? 'win' : 'lose');
-      if (this.sim.result === 'win') audio.sfxVictory(); else audio.sfxDefeat();
+      crazyGameplayStop();
+      if (this.sim.result === 'win') {
+        audio.sfxVictory();
+        voice.play('victory');
+        crazyHappytime();
+      } else {
+        audio.sfxDefeat();
+        voice.play('defeat');
+      }
       this.shake(400, 10);
     }
   }
@@ -672,6 +700,8 @@ export class GameScene extends Phaser.Scene {
             });
           }
           audio.setMusicAge(ev.to);
+          voice.play(ev.to === 'medieval' ? 'medieval_age' : 'modern_age');
+          crazyHappytime();
         } else {
           audio.sfxEvolve();
           const nextKey = `base_${ev.to}_ai`;
@@ -734,6 +764,9 @@ export class GameScene extends Phaser.Scene {
 
     const danger = 1 - Math.max(pRatio, aRatio);
     audio.setTension(danger * danger);
+    if (pRatio < 0.28 && this.sim.player.baseHp > 0) {
+      voice.play('base_low', 14000);
+    }
 
     // Tower tint per damage level
     const towerLook = (img: Phaser.GameObjects.Image, ratio: number, flash: number) => {

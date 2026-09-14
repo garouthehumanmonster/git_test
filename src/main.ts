@@ -2,7 +2,10 @@ import Phaser from 'phaser';
 import { BootScene } from './render/BootScene';
 import { GameScene } from './render/GameScene';
 import { LANE_WIDTH, LANE_HEIGHT } from './sim/types';
+import { initCrazyGames } from './crazygames';
 import './style.css';
+
+initCrazyGames();
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
