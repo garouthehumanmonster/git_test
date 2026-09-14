@@ -97,18 +97,17 @@ shot oscillator + filtered-noise patches; no audio files ship with the game.
 
 ## Balance
 
-Balance was tuned against the built-in bot (see `simulateBotMatch`). Running
-50 bot-vs-bot matches produces ~50/50 win/loss with zero timeouts:
+Balance is tuned against the built-in bot (see `simulateBotMatch`). The
+headless player bot mirrors the AI's composition, evolution, and upgrade
+policy, so self-play is a useful smoke test rather than an unfair AI-vs-dummy
+comparison. Results vary by seed; a typical 50-match run is close to even and
+finishes without timeouts.
 
-```
-matches : 50
-wins    : 26 (52.0%)
-losses  : 24 (48.0%)
-timeouts: 0
-ticks avg/min/max: ~4400 / ~2800 / ~9500
+```bash
+npm run sim 50
 ```
 
-Run `npm run sim 50` to verify for yourself; tweak the tables in
+Use the output to spot regressions, then tweak the tables in
 `src/sim/types.ts` to rebalance.
 
 ## Testing & Determinism
@@ -116,7 +115,7 @@ Run `npm run sim 50` to verify for yourself; tweak the tables in
 The game is strictly deterministic. The Mulberry32 PRNG state is preserved and rehydrated from `state.rngState` on every tick. The test suite includes:
 1. **Unit & Transition Tests**: State initialization, economic gates, age transitions, and cooldown locks.
 2. **Golden Replay Tests**: Replaying fixed intent sequences verifies byte-for-byte state alignment and hash equality across runs (`test/sim/determinism.test.ts`).
-3. **Headless Bot Balance Tuning**: Automated bot matches report win/loss rates to ensure fair competition (`npm run sim 50`).
+3. **Headless Bot Balance Tuning**: Automated bot matches report win/loss rates and timeouts to catch balance regressions (`npm run sim 50`).
 
 ## Assets
 

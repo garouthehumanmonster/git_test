@@ -7,6 +7,7 @@ import {
   type UnitState,
   AGE_LABEL,
   AI_BASE_X,
+  BASE_HP,
   LANE_BOTTOM,
   LANE_CENTER_Y,
   LANE_HEIGHT,
@@ -80,6 +81,7 @@ export class GameScene extends Phaser.Scene {
   private smokeAi!: Phaser.GameObjects.Particles.ParticleEmitter;
   private stars!: Phaser.GameObjects.Graphics;
   private gameOverHandled = false;
+  private rewardInFlight = false;
   private audioStarted = false;
   private shakeTime = 0;
   private shakeMag = 0;
@@ -96,6 +98,16 @@ export class GameScene extends Phaser.Scene {
     this.tickAccumMs = 0;
     this.gameOverHandled = false;
     this.pendingIntents = [];
+    this.rewardInFlight = false;
+    this.paused = false;
+    this.speedMul = 1;
+    this.playerBaseFlash = 0;
+    this.aiBaseFlash = 0;
+    this.shakeTime = 0;
+    this.shakeMag = 0;
+    this.shakeOffsetX = 0;
+    this.shakeOffsetY = 0;
+    this.hitStopMs = 0;
 
     crazyGameplayStart();
     voice.play('battle_begins', 5000);
@@ -171,19 +183,31 @@ export class GameScene extends Phaser.Scene {
     this.hud.onSpawnRequest = (role) => this.trySpawn('player', role);
     this.hud.onEvolveRequest = () => this.tryEvolve('player');
     this.hud.onUpgradeForge = () => this.tryUpgrade('forge');
+    this.hud.onUpgradeArmor = () => this.tryUpgrade('armor');
     this.hud.onRestartRequest = () => safeRestart();
     this.hud.onRewardedAdRequest = () => {
-      crazyShowRewardedAd(() => {
-        this.sim.player.gold += 100;
-        voice.play('reinforcements');
-        audio.sfxGold();
-        this.addFloat(PLAYER_BASE_X + 40, LANE_TOP - 20, '+100g REWARD!', 0xffd166, 60);
-      });
+      if (this.rewardInFlight || this.sim.result !== 'playing') return;
+      this.rewardInFlight = true;
+      crazyShowRewardedAd(
+        () => {
+          this.rewardInFlight = false;
+          this.sim.player.gold += 100;
+          voice.play('reinforcements');
+          audio.sfxGold();
+          this.addFloat(PLAYER_BASE_X + 40, LANE_TOP - 20, '+100g REWARD!', 0xffd166, 60);
+        },
+        () => {
+          this.rewardInFlight = false;
+          audio.sfxError();
+        },
+      );
     };
-    this.hud.onToggleMusic = () => { audio.toggleMusic(); this.hud.setMusic(!audio.musicIsMuted()); };
+    // The sound control is a master mute, so M and the on-screen control
+    // consistently silence music, effects and announcer voice together.
+    this.hud.onToggleMusic = () => { this.hud.setMusic(!audio.toggleMute()); };
     this.hud.onTogglePause = () => this.togglePause();
     this.hud.onCycleSpeed = () => this.cycleSpeed();
-    this.hud.setMusic(!audio.musicIsMuted());
+    this.hud.setMusic(!audio.isMuted());
 
     const safeRestart = () => crazyShowMidgameAd(() => this.restart());
 
@@ -205,7 +229,7 @@ export class GameScene extends Phaser.Scene {
 
     // Keyboard
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
-      const mKey = () => { audio.toggleMusic(); this.hud.setMusic(!audio.musicIsMuted()); };
+      const mKey = () => { this.hud.setMusic(!audio.toggleMute()); };
       if (e.key === 'p' || e.key === 'P' || e.code === 'Escape') { this.togglePause(); return; }
       if (this.sim.result !== 'playing') {
         if (e.code === 'Space' || e.key === 'r' || e.key === 'R') safeRestart();
@@ -596,6 +620,7 @@ export class GameScene extends Phaser.Scene {
         sprite.setScale(sp);
         const trailR = p.age === 'modern' ? 5 : 3;
         const trail = this.add.circle(p.x, p.y, trailR, color, 0.5).setDepth(3);
+        audio.sfxArrow(p.age);
         g = { id: p.id, sprite, trail, color };
         this.projGfx.set(p.id, g);
       }
@@ -617,8 +642,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ---------------------------------------------------------------- events
-
-  private lastProjectileCount = 0;
 
   private drainEvents(): void {
     for (const ev of this.sim.events) {
@@ -716,13 +739,10 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
-    const now = this.sim.projectiles.length;
-    if (now > this.lastProjectileCount) {
-      for (const p of this.sim.projectiles) {
-        if (!this.projGfx.has(p.id)) audio.sfxArrow(p.age);
-      }
-    }
-    this.lastProjectileCount = now;
+    // Simulation events are a one-frame hand-off to the renderer. Keeping them
+    // around made every hit, sound and floating number replay on every tick
+    // until its TTL expired (up to 1.2 seconds of repeated damage feedback).
+    this.sim.events = this.sim.events.filter((event) => event.kind === 'gameover');
   }
 
   private addFloat(x: number, y: number, text: string, color: number, ttl: number): void {
@@ -752,12 +772,12 @@ export class GameScene extends Phaser.Scene {
     this.aiFlag.angle = Math.sin(t * 4 + Math.PI) * 8;
 
     const tbarW = 70;
-    const pRatio = Math.max(0, this.sim.player.baseHp) / 800;
+    const pRatio = Math.max(0, this.sim.player.baseHp) / BASE_HP;
     this.playerBaseHpBar.width = tbarW * pRatio;
     this.playerBaseHpBar.x = PLAYER_BASE_X - tbarW / 2;
     this.playerBaseHpBar.setFillStyle(pRatio < 0.3 ? 0xef5350 : pRatio < 0.6 ? 0xffd166 : 0x64b5f6);
 
-    const aRatio = Math.max(0, this.sim.ai.baseHp) / 800;
+    const aRatio = Math.max(0, this.sim.ai.baseHp) / BASE_HP;
     this.aiBaseHpBar.width = tbarW * aRatio;
     this.aiBaseHpBar.x = AI_BASE_X + tbarW / 2;
     this.aiBaseHpBar.setFillStyle(aRatio < 0.3 ? 0xef5350 : aRatio < 0.6 ? 0xffd166 : 0xef5350);

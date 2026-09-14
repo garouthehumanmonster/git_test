@@ -97,7 +97,11 @@ export class AudioEngine {
 
   async init(): Promise<void> {
     if (this.ctx) return;
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AC = window.AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    // Some embedded browsers expose no Web Audio API. Audio is optional; the
+    // game must remain playable instead of throwing during the first input.
+    if (!AC) return;
     this.ctx = new AC();
     if (this.ctx.state === 'suspended') await this.ctx.resume();
 

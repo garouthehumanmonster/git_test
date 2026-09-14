@@ -8,10 +8,11 @@ export class BootScene extends Phaser.Scene {
 
   preload(): void {
     // Backgrounds per age — fallback to bg_game if a file is missing.
-    this.load.image('bg_stone', '/bg_stone.jpg');
-    this.load.image('bg_medieval', '/bg_medieval.jpg');
-    this.load.image('bg_modern', '/bg_modern.jpg');
-    this.load.image('bg_game', '/bg_game.jpg');
+    const asset = (name: string): string => `${import.meta.env.BASE_URL}${name}`;
+    this.load.image('bg_stone', asset('bg_stone.jpg'));
+    this.load.image('bg_medieval', asset('bg_medieval.jpg'));
+    this.load.image('bg_modern', asset('bg_modern.jpg'));
+    this.load.image('bg_game', asset('bg_game.jpg'));
   }
 
   create(): void {

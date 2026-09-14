@@ -27,6 +27,8 @@ export interface Projectile {
   y: number;
   startX: number;
   targetId: number;
+  /** Unit that fired the projectile, for kill/veterancy credit. */
+  attackerId: number;
   speed: number;
   damage: number;
   /** Set when the target dies before the projectile lands — projectile then chases last known x. */
@@ -47,6 +49,8 @@ export interface UnitState {
   /** Ticks until next attack fires. */
   cooldown: number;
   target: number | null;
+  /** Last enemy this unit damaged; used for accurate kill/veterancy credit. */
+  lastAttackerId: number | null;
   /** Facing: 1 = toward enemy for player (right), -1 for ai (left). */
   dir: 1 | -1;
   /** Animation jitter seed (per-unit constant). */

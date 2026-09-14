@@ -94,25 +94,41 @@ export function crazyShowMidgameAd(onComplete?: () => void): void {
   onComplete?.();
 }
 
-export function crazyShowRewardedAd(onReward: () => void): void {
+export function crazyShowRewardedAd(onReward: () => void, onError?: () => void): void {
+  let settled = false;
+  const reward = () => {
+    if (settled) return;
+    settled = true;
+    onReward();
+  };
+  const fail = () => {
+    if (settled) return;
+    settled = true;
+    onError?.();
+  };
+
   try {
     if (window.CrazyGames?.SDK?.ad?.requestAd) {
       window.CrazyGames.SDK.ad.requestAd('rewarded', {
         adStarted: () => console.log('[CrazyGames] Rewarded ad started'),
         adFinished: () => {
           console.log('[CrazyGames] Rewarded ad completed! Granting reward.');
-          onReward();
+          reward();
         },
         adError: (err) => {
+          // A failed or blocked ad is not a completed rewarded view. Granting
+          // here allowed repeated free rewards whenever an ad was unavailable.
           console.warn('[CrazyGames] Rewarded ad error / adblocked:', err);
-          onReward();
+          fail();
         },
       });
       return;
     }
   } catch (e) {
-    console.warn(e);
+    console.warn('[CrazyGames] Rewarded ad request failed:', e);
+    fail();
+    return;
   }
   console.log('[CrazyGames Mock] Rewarded ad watched (dev reward granted)');
-  onReward();
+  reward();
 }

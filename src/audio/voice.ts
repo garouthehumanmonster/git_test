@@ -33,7 +33,7 @@ class VoiceAnnouncer {
     if (typeof window !== 'undefined') {
       for (const line of Object.keys(VOICE_TEXT) as VoiceLine[]) {
         try {
-          const a = new Audio('/voice/' + line + '.wav');
+          const a = new Audio(`${import.meta.env.BASE_URL}voice/${line}.wav`);
           a.volume = 0.95;
           this.audioCache.set(line, a);
         } catch {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { canSpawn, canEvolve, createInitialState, simulateBotMatch, tick } from '../../src/sim/sim';
-import { EVOLVE_COST, EVOLVE_XP_REQ, BASE_HP } from '../../src/sim/types';
+import { canSpawn, canEvolve, canUpgrade, createInitialState, simulateBotMatch, tick } from '../../src/sim/sim';
+import { ARMOR_COSTS, EVOLVE_COST, EVOLVE_XP_REQ, BASE_HP } from '../../src/sim/types';
 
 describe('simulation', () => {
   it('starts in a clean playing state', () => {
@@ -44,6 +44,22 @@ describe('simulation', () => {
     expect(canEvolve(s, 'player')).toBe(true);
     tick(s, [{ type: 'evolve', side: 'player' }]);
     expect(s.player.age).toBe('medieval');
+  });
+
+  it('applies armor upgrades to existing units and keeps the economy gate', () => {
+    const s = createInitialState(1);
+    s.player.gold = 100;
+    tick(s, [{ type: 'spawn', side: 'player', role: 'swarm' }]);
+    const unit = s.units.find((u) => u.side === 'player');
+    expect(unit).toBeDefined();
+    const oldHp = unit!.hp;
+    s.player.gold = ARMOR_COSTS.stone[0]! - 1;
+    expect(canUpgrade(s, 'player', 'armor')).toBe(false);
+    s.player.gold = ARMOR_COSTS.stone[0]!;
+    tick(s, [{ type: 'upgrade', side: 'player', which: 'armor' }]);
+    expect(s.player.armorRank).toBe(1);
+    expect(unit!.hp).toBeGreaterThan(oldHp);
+    expect(unit!.hp).toBeLessThanOrEqual(unit!.def.hp * 1.15);
   });
 
   it('reaches a terminal state under bot self-play within time limit', () => {

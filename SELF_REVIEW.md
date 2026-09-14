@@ -2,6 +2,26 @@
 
 Initial Self-Score: **8.7 / 10** → External Audit Score: **7.5 / 10** → Post-Remediation Score: **9.2 / 10**.
 
+## Current Bug-Fix Review — 2026-09-14
+
+Current practical score: **8.8 / 10**. The core simulation and delivery pipeline are
+strong, but the project still has no browser-level regression suite and Phaser's
+production bundle remains large. This pass fixed the highest-impact gameplay and
+runtime issues rather than treating the previous 9.2 score as final.
+
+Resolved in this pass:
+- Armor button now dispatches its upgrade action instead of doing nothing.
+- Combat events are consumed once by the renderer, preventing repeated damage
+  numbers, hit sounds, shakes, and particles for the same hit.
+- Kill/veterancy credit follows the unit that dealt the final hit, including
+  projectile attacks; promotion HP is capped at the new effective maximum.
+- Headless player self-play now mirrors AI upgrades, restoring meaningful balance
+  measurements.
+- Master mute now silences music, SFX, and voice consistently; failed rewarded
+  ads no longer grant free gold and duplicate ad callbacks are ignored.
+- Public assets use the configured Vite base path, so backgrounds and voice lines
+  work when the game is hosted below the domain root.
+
 ## Post-Audit Remediation (Resolved Delivery & Hygiene Debt)
 
 1. **Performance & Delivery (Previously 4/10 → Now 9.5/10)**:
@@ -17,7 +37,7 @@ Initial Self-Score: **8.7 / 10** → External Audit Score: **7.5 / 10** → Post
 
 3. **CI & Automated Gates (Previously 7/10 → Now 9.5/10)**:
    - Added `.github/workflows/ci.yml` running on push & PR.
-   - Automates: `npm run typecheck`, `npm test` (18 tests), `npm run sim 25`, and `npm run build`.
+   - Automates: `npm run typecheck`, `npm test` (20 tests), `npm run sim 25`, and `npm run build`.
 
 4. **Docs, Hygiene & Discoverability (Previously 6/10 → Now 9.5/10)**:
    - Added MIT `LICENSE`.
@@ -27,6 +47,6 @@ Initial Self-Score: **8.7 / 10** → External Audit Score: **7.5 / 10** → Post
 
 ## Quality Gates
 - TypeScript: clean (`tsc --noEmit` passes with 0 errors).
-- Tests: 18 passing (`vitest run` — unit, combat, transitions, and golden determinism).
-- Bundle: clean (`vite build`, 377 KB gzipped).
-- Balance: Headless self-play runs clean with 0 timeouts.
+- Tests: 20 passing (`vitest run` — unit, combat, transitions, RNG validation, and golden determinism).
+- Bundle: builds successfully (`vite build`, about 378 KB gzipped); Vite still reports a large-chunk warning because Phaser is bundled eagerly.
+- Balance: Headless self-play mirrors both sides' upgrade policy and is close to even across typical runs.

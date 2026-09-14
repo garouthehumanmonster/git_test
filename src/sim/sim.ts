@@ -149,6 +149,7 @@ function applyIntent(state: SimState, intent: Intent, rng: RNG): void {
       state: 'walk',
       cooldown: 0,
       target: null,
+      lastAttackerId: null,
       dir: intent.side === 'player' ? 1 : -1,
       animSeed: rng.int(0, 1_000_000),
       ageTicks: 0,
@@ -250,7 +251,8 @@ function computeDamageVs(attacker: UnitState, defender: UnitState, attackerPlaye
   return dmg;
 }
 
-function damageUnit(state: SimState, u: UnitState, amount: number, color: number): void {
+function damageUnit(state: SimState, u: UnitState, amount: number, color: number, attackerId: number): void {
+  u.lastAttackerId = attackerId;
   u.hp -= amount;
   state.events.push({
     kind: 'hit',
@@ -282,16 +284,12 @@ function rewardKill(state: SimState, victim: UnitState): void {
   p.xp += victim.def.xpValue;
   state.events.push({ kind: 'gold', side: killerSide, amount: goldGain, ttl: 30 });
 
-  // Award kill credit to the closest living enemy within 1.5× victim's range;
-  // that's the unit most recently fighting this victim.
-  let killer: UnitState | null = null;
-  let bestDist = Infinity;
-  for (const u of state.units) {
-    if (u.side !== killerSide || u.state === 'die') continue;
-    const d = Math.abs(u.x - victim.x);
-    const searchR = Math.max(40, u.def.range * 1.6);
-    if (d < searchR && d < bestDist) { bestDist = d; killer = u; }
-  }
+  // Credit the unit that actually dealt the final hit. The old proximity-based
+  // fallback promoted whichever unit happened to be closest, which made ranged
+  // veterancy inconsistent and could reward a unit on the other side of a fight.
+  const killer = victim.lastAttackerId === null
+    ? null
+    : state.units.find((u) => u.id === victim.lastAttackerId && u.side === killerSide) ?? null;
   if (killer) {
     const killerOwner = killerSide === 'player' ? state.player : state.ai;
     promoteVet(killer, killerOwner);
@@ -313,7 +311,9 @@ function promoteVet(u: UnitState, owner: PlayerState): void {
     const oldMax = u.def.hp * VET_HP[wasVet]! * armorMul;
     const newMax = u.def.hp * newHpMul * armorMul;
     const ratio = Math.min(1, u.hp / oldMax);
-    u.hp = newMax * ratio + (newMax - oldMax);
+    // Preserve the current health ratio and top up by the new rank's HP gain,
+    // but never let a promotion create HP above the new effective maximum.
+    u.hp = Math.min(newMax, newMax * ratio + (newMax - oldMax));
     u.hpMul = newHpMul;
     u.spdMul = VET_SPD[newVet]!;
   }
@@ -360,6 +360,12 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
     let target: UnitState | null = null;
     if (u.target != null) {
       target = state.units.find((o) => o.id === u.target && o.side !== u.side && o.state !== 'die') ?? null;
+      // A unit must never turn around to chase a target that it has already
+      // passed. Re-acquiring here prevents rare overshoot/backtracking loops.
+      if (target) {
+        const dx = target.x - u.x;
+        if ((u.dir === 1 && dx < -2) || (u.dir === -1 && dx > 2)) target = null;
+      }
     }
     if (!target) {
       target = findTarget(state, u);
@@ -489,7 +495,7 @@ function fireAttack(state: SimState, u: UnitState, target: UnitState, owner: Pla
 
   if (u.def.range <= 26) {
     // Melee — immediate damage.
-    damageUnit(state, target, baseDmg, attackerColor);
+    damageUnit(state, target, baseDmg, attackerColor, u.id);
     return;
   }
   // Ranged — spawn a projectile.
@@ -500,6 +506,7 @@ function fireAttack(state: SimState, u: UnitState, target: UnitState, owner: Pla
     startX: u.x,
     y: LANE_CENTER_Y + u.yOffset,
     targetId: target.id,
+    attackerId: u.id,
     targetX: target.x,
     speed: 5 + u.def.range / 40,
     damage: baseDmg,
@@ -520,7 +527,7 @@ function updateProjectiles(state: SimState, rng: RNG): void {
       // Impact.
       if (target) {
         const color = p.side === 'player' ? 0x64b5f6 : 0xef5350;
-        damageUnit(state, target, p.damage * (0.95 + rng.next() * 0.1), color);
+        damageUnit(state, target, p.damage * (0.95 + rng.next() * 0.1), color, p.attackerId);
       }
       continue;
     }
@@ -654,7 +661,22 @@ export function botIntentsFor(state: SimState, side: Side): Intent[] {
   const mine = state.units.filter((u) => u.side === side && u.state !== 'die');
   const theirs = state.units.filter((u) => u.side !== side && u.state !== 'die');
 
-  if (canEvolve(state, side) && rng.next() < 0.35) {
+  // Mirror the in-game AI's upgrade policy. Without this, headless self-play
+  // gave the internal AI free Forge/Armor upgrades while the player bot never
+  // upgraded, making the advertised balance results meaningless.
+  if (!canEvolve(state, side) && (me.forgeRank < MAX_UPGRADE_RANK || me.armorRank < MAX_UPGRADE_RANK)) {
+    const hpRatio = me.baseHp / BASE_HP;
+    const wantArmor = hpRatio < 0.75 && me.armorRank <= me.forgeRank;
+    const picks: Array<'armor' | 'forge'> = wantArmor ? ['armor', 'forge'] : ['forge', 'armor'];
+    for (const pick of picks) {
+      if (canUpgrade(state, side, pick) && rng.next() < 0.35) {
+        intents.push({ type: 'upgrade', side, which: pick });
+        return intents;
+      }
+    }
+  }
+
+  if (canEvolve(state, side) && rng.next() < 0.4) {
     intents.push({ type: 'evolve', side });
     return intents;
   }

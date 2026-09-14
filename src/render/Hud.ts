@@ -3,6 +3,7 @@ import type { SimState, UnitRole } from '../sim/types';
 import { FORGE_COSTS, ARMOR_COSTS, MAX_UPGRADE_RANK } from '../sim/types';
 import {
   AGE_LABEL,
+  BASE_HP,
   EVOLVE_COST,
   EVOLVE_XP_REQ,
   LANE_HEIGHT,
@@ -492,16 +493,16 @@ export class Hud {
 
     // HP bars
     const barW = Hud.BAR_W;
-    const pRatio = Math.max(0, p.baseHp) / 800;
+    const pRatio = Math.max(0, p.baseHp) / BASE_HP;
     this.playerHpBar.width = barW * pRatio;
     this.playerHpBar.setFillStyle(pRatio < 0.3 ? 0xef5350 : pRatio < 0.6 ? 0xffb74d : theme.hpPlayer);
-    this.playerHpText.setText(`YOU       ${Math.max(0, Math.ceil(p.baseHp))} / 800`);
+    this.playerHpText.setText(`YOU       ${Math.max(0, Math.ceil(p.baseHp))} / ${BASE_HP}`);
 
     const a = state.ai;
-    const aRatio = Math.max(0, a.baseHp) / 800;
+    const aRatio = Math.max(0, a.baseHp) / BASE_HP;
     this.aiHpBar.width = barW * aRatio;
     this.aiHpBar.setFillStyle(aRatio < 0.3 ? 0xef5350 : aRatio < 0.6 ? 0xffb74d : theme.hpEnemy);
-    this.aiHpText.setText(`${Math.max(0, Math.ceil(a.baseHp))} / 800       ENEMY`);
+    this.aiHpText.setText(`${Math.max(0, Math.ceil(a.baseHp))} / ${BASE_HP}       ENEMY`);
 
     // Role accent colors per role (works across all ages)
     const roleAccent: Record<UnitRole, number> = {
