@@ -6,6 +6,15 @@ import { BASE_ART, BASE_FIT } from '../../src/render/basearth';
 import { AGE_PROPS, PROP_LAYOUT } from '../../src/render/propart';
 import { PORTRAIT_ART, PORTRAIT_CANVAS } from '../../src/render/portraits';
 import { fitSprite, paintOps, type SpriteOp } from '../../src/render/spriteops';
+import {
+  FX_DEFS,
+  FX_FIT,
+  ICON_TURRET_ART,
+  ICON_ULT_ART,
+  TURRET_ART,
+  TURRET_FIT,
+} from '../../src/render/turretart';
+import { ICON_CANVAS, TURRET_CANVAS } from '../../src/render/turretart';
 import type { Age, UnitRole } from '../../src/sim/types';
 
 const AGES: Age[] = ['stone', 'medieval', 'modern'];
@@ -176,4 +185,62 @@ describe('interface portraits', () => {
       }
     });
   }
+});
+
+describe('base turret art', () => {
+  for (const age of AGES) {
+    it(`${age} turret stays on palette with a clean ink silhouette`, () => {
+      const fit = TURRET_FIT[age];
+      for (const side of ['player', 'ai'] as const) {
+        const g = raster(fit.w, fit.h, TURRET_ART[age], age, TEAM_COLORS[side], fit.dx, fit.dy);
+        assertOnPalette(g, age, `${age} turret (${side})`, [TEAM_COLORS.player, TEAM_COLORS.ai]);
+        assertInkSilhouette(g, `${age} turret (${side})`);
+      }
+    });
+  }
+
+  it('gives each age a distinct turret silhouette', () => {
+    const shapes = AGES.map((age) => JSON.stringify(TURRET_FIT[age]));
+    expect(new Set(shapes).size).toBe(AGES.length);
+  });
+
+  it('fits every turret on the texel grid at the tower scale', () => {
+    for (const age of AGES) {
+      const fit = TURRET_FIT[age];
+      // A negative offset is expected when art grows past the authored canvas:
+      // `fitSprite` widens the canvas instead of clipping the ink outline.
+      expect(Number.isInteger(fit.dx)).toBe(true);
+      expect(Number.isInteger(fit.dy)).toBe(true);
+      expect(fit.w).toBeGreaterThanOrEqual(TURRET_CANVAS.w);
+      expect(fit.foot).toBeGreaterThan(0);
+      expect(fit.foot).toBeLessThanOrEqual(fit.h);
+      expect(fit.h * PIXEL_SCALE).toBeLessThan(80);
+    }
+  });
+});
+
+describe('effect and icon art', () => {
+  it('keeps every effect sprite on palette with an ink silhouette', () => {
+    for (const age of AGES) {
+      for (const def of FX_DEFS) {
+        const fit = FX_FIT[def.key]!;
+        const g = raster(fit.w, fit.h, def.ops, age, 0xffffff, fit.dx, fit.dy);
+        assertOnPalette(g, age, `${def.key} (${age})`);
+        assertInkSilhouette(g, `${def.key} (${age})`);
+      }
+    }
+  });
+
+  it('keeps the HUD turret and superweapon icons on palette', () => {
+    for (const age of AGES) {
+      for (const [label, ops] of [
+        ['turret icon', ICON_TURRET_ART[age]],
+        ['ultimate icon', ICON_ULT_ART[age]],
+      ] as const) {
+        const g = raster(ICON_CANVAS.w, ICON_CANVAS.h, ops, age, TEAM_COLORS.player);
+        assertOnPalette(g, age, `${label} (${age})`, [TEAM_COLORS.player]);
+        assertInkSilhouette(g, `${label} (${age})`);
+      }
+    }
+  });
 });

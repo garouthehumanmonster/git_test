@@ -2,18 +2,32 @@ import Phaser from 'phaser';
 import {
   type Intent,
   type SimState,
+  type StrikeKind,
   type UnitRole,
   type UnitState,
   AGE_LABEL,
   AI_BASE_X,
   BASE_HP,
+  COLLAPSE_START_TICK,
   LANE_BOTTOM,
   LANE_TOP,
   LANE_WIDTH,
   PLAYER_BASE_X,
   TICK_MS,
+  ULT_DEFS,
+  collapseRate,
 } from '../sim/types';
-import { canEvolve, canSpawn, canUpgrade, createInitialState, tick } from '../sim/sim';
+import {
+  canBuildTurret,
+  canCastUltimate,
+  canEvolve,
+  canSpawn,
+  canUpgrade,
+  createInitialState,
+  tick,
+} from '../sim/sim';
+import { type ResultsPayload, baseHpRatio, recordResult, stageById, starRating, STAGES } from '../campaign';
+import { FX_ORIGIN, TURRET_FIT, turretKey } from './turretart';
 import { Hud } from './Hud';
 import { UNIT_FIT, unitKey } from './unitart';
 import { baseKey } from './basearth';
@@ -40,12 +54,20 @@ const HIT_FLASH_MS = 60;
 
 const DEPTH = {
   lantern: -6,
-  midProp: 5,
+  turret: 2.5,
   unit: 3,
   projectile: 4,
+  midProp: 5,
   particles: 6,
+  strike: 7,
   float: 8,
 } as const;
+
+/** Screen shake per superweapon, so a meteor lands heavier than a flak burst. */
+const STRIKE_SHAKE: Record<StrikeKind, number> = { meteor: 22, volley: 12, airstrike: 16 };
+/** Victory is savoured: 0.3x for 1.5s before the results card appears. */
+const VICTORY_SLOWMO_MUL = 0.3;
+const VICTORY_SLOWMO_MS = 1500;
 
 interface UnitGfx {
   id: number;
@@ -59,6 +81,12 @@ interface UnitGfx {
   flashUntilMs: number;
   currentVet: number;
   dying: boolean;
+  /** Screen-space knockback push from the last hit, in px. */
+  knock: number;
+  /** Ticks left of the current attack's wind-up, used to time the weapon FX. */
+  lastAttackTick: number;
+  hovered: boolean;
+  wasFull: boolean;
 }
 
 interface ProjGfx {
@@ -87,6 +115,7 @@ export class GameScene extends Phaser.Scene {
   private projGfx = new Map<number, ProjGfx>();
   private floatingText: Phaser.GameObjects.Text[] = [];
   private dust!: Phaser.GameObjects.Particles.ParticleEmitter;
+  private burst!: Phaser.GameObjects.Particles.ParticleEmitter;
   private ambient!: Phaser.GameObjects.Particles.ParticleEmitter;
   private smokePlayer!: Phaser.GameObjects.Particles.ParticleEmitter;
   private smokeAi!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -102,11 +131,32 @@ export class GameScene extends Phaser.Scene {
   private parallaxX = 0;
   private parallaxY = 0;
   private lastAge = 'stone';
+  private stageId = 1;
+  private collapseWarned = false;
+  private resultsShown = false;
+  private playerTurret!: Phaser.GameObjects.Image;
+  private aiTurret!: Phaser.GameObjects.Image;
+  private turretRank = { player: 0, ai: 0 };
+  /** Recoil offset in px, decaying, applied on top of the turret's rest pose. */
+  private turretKick = { player: 0, ai: 0 };
+  private strikeLayer!: Phaser.GameObjects.Container;
 
   constructor() { super('GameScene'); }
 
+  /**
+   * The campaign hands the scene a stage; the endless skirmish (and the
+   * headless tooling) simply omit it.
+   */
+  init(data?: { stageId?: number }): void {
+    this.stageId = data?.stageId ?? 1;
+  }
+
   create(): void {
-    this.sim = createInitialState(Math.floor(Math.random() * 0xffffffff));
+    // Stage 0 is the endless skirmish: default rules, nothing persisted.
+    const stage = this.stageId === 0 ? null : stageById(this.stageId);
+    this.sim = createInitialState(Math.floor(Math.random() * 0xffffffff), stage?.rules);
+    this.collapseWarned = false;
+    this.resultsShown = false;
     this.tickAccumMs = 0;
     this.gameOverHandled = false;
     this.pendingIntents = [];
@@ -136,6 +186,9 @@ export class GameScene extends Phaser.Scene {
 
     this.playerBase = this.makeBase('player');
     this.aiBase = this.makeBase('ai');
+    this.strikeLayer = this.add.container(0, 0).setDepth(DEPTH.strike);
+    this.playerTurret = this.makeTurret('player');
+    this.aiTurret = this.makeTurret('ai');
     this.playerFlag = this.makeFlag('player');
     this.aiFlag = this.makeFlag('ai');
     this.makeTowerHpBars();
@@ -148,6 +201,18 @@ export class GameScene extends Phaser.Scene {
       scale: { start: 0.9, end: 0 },
       gravityY: 220,
       alpha: { start: 1, end: 0.2 },
+      emitting: false,
+    }).setDepth(DEPTH.particles);
+
+    // Death burst: red chunks that arc away from the falling unit.
+    this.burst = this.add.particles(0, 0, 'particle_chunk', {
+      lifespan: 520,
+      speed: { min: 50, max: 170 },
+      angle: { min: 200, max: 340 },
+      scale: { start: 1.1, end: 0 },
+      gravityY: 320,
+      alpha: { start: 1, end: 0 },
+      tint: [0xef5350, 0xd64a4a, 0xffe0b0],
       emitting: false,
     }).setDepth(DEPTH.particles);
 
@@ -189,6 +254,10 @@ export class GameScene extends Phaser.Scene {
     this.hud.onUpgradeForge = () => this.tryUpgrade('forge');
     this.hud.onUpgradeArmor = () => this.tryUpgrade('armor');
     this.hud.onRestartRequest = () => safeRestart();
+    this.hud.onNextStageRequest = () => this.gotoStage(this.stageId + 1);
+    this.hud.onMenuRequest = () => this.toMenu();
+    this.hud.onTurretRequest = () => this.tryTurret();
+    this.hud.onUltimateRequest = () => this.tryUltimate();
     this.hud.onRewardedAdRequest = () => {
       if (this.rewardInFlight || this.sim.result !== 'playing') return;
       this.rewardInFlight = true;
@@ -230,11 +299,21 @@ export class GameScene extends Phaser.Scene {
 
     this.cameras.main.setScroll(0, 0);
 
+    if (stage) {
+      this.hud.announce(stage.name.toUpperCase(), stage.tagline, 2600);
+      this.announceStageIntro(stage.rules.playerStartAge, stage.rules.aiStartAge);
+    } else {
+      this.hud.announce('ENDLESS SKIRMISH', 'hold the lane as long as you can', 2200);
+    }
+
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
       const mKey = () => { this.hud.setMusic(!audio.toggleMute()); };
       if (e.key === 'p' || e.key === 'P' || e.code === 'Escape') { this.togglePause(); return; }
       if (this.sim.result !== 'playing') {
-        if (e.code === 'Space' || e.key === 'r' || e.key === 'R') safeRestart();
+        if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+          if (this.sim.result === 'win' && this.stageId > 0 && this.stageId < STAGES.length) this.gotoStage(this.stageId + 1);
+          else safeRestart();
+        } else if (e.code === 'Space' || e.key === 'r' || e.key === 'R') safeRestart();
         else if (e.key === 'm' || e.key === 'M') mKey();
         return;
       }
@@ -244,8 +323,11 @@ export class GameScene extends Phaser.Scene {
       else if (e.key === 'e' || e.key === 'E') this.tryEvolve('player');
       else if (e.key === 'u' || e.key === 'U') this.tryUpgrade('forge');
       else if (e.key === 'y' || e.key === 'Y') this.tryUpgrade('armor');
+      else if (e.key === 't' || e.key === 'T') this.tryTurret();
       else if (e.key === 'm' || e.key === 'M') mKey();
-      else if (e.key === ' ') this.cycleSpeed();
+      // Space is the superweapon: it is the one action worth a fat hotkey.
+      else if (e.key === ' ') this.tryUltimate();
+      else if (e.key === 'x' || e.key === 'X') this.cycleSpeed();
     });
   }
 
@@ -305,6 +387,109 @@ export class GameScene extends Phaser.Scene {
       .setDepth(2);
   }
 
+  /**
+   * Base-defence turret. Hidden until bought, then swapped to the age's
+   * silhouette on evolution and tilted up as its rank rises.
+   */
+  private makeTurret(side: 'player' | 'ai'): Phaser.GameObjects.Image {
+    const age = side === 'player' ? this.sim.player.age : this.sim.ai.age;
+    const x = side === 'player' ? PLAYER_BASE_X + 26 : AI_BASE_X - 26;
+    const y = laneGroundY(x) - 6;
+    const img = this.add.image(x, y, turretKey(age, side))
+      .setOrigin(0.5, 0.9)
+      .setScale(PIXEL_SCALE)
+      .setDepth(DEPTH.turret)
+      .setVisible(false);
+    if (side === 'ai') img.setFlipX(true);
+    void TURRET_FIT;
+    return img;
+  }
+
+  private syncTurret(side: 'player' | 'ai'): void {
+    const p = side === 'player' ? this.sim.player : this.sim.ai;
+    const img = side === 'player' ? this.playerTurret : this.aiTurret;
+    const key = turretKey(p.age, side);
+    if (img.texture.key !== key && this.textures.exists(key)) {
+      img.setTexture(key);
+      img.setScale(PIXEL_SCALE);
+    }
+    img.setVisible(p.turret.rank > 0);
+    if (p.turret.rank === 0) return;
+    // Higher ranks sit taller and lean further out over the lane.
+    const scale = PIXEL_SCALE * (1 + (p.turret.rank - 1) * 0.06);
+    img.setScale(scale, scale);
+    if (this.turretRank[side] !== p.turret.rank) {
+      this.turretRank[side] = p.turret.rank;
+      const bob = this.add.circle(img.x, img.y - 20, 26, paletteFor(p.age).highlight, 0.4).setDepth(DEPTH.particles);
+      this.tweens.add({ targets: bob, scale: 1.9, alpha: 0, duration: 380, onComplete: () => bob.destroy() });
+    }
+    // Lean toward whatever it is tracking, and kick back when it fires.
+    const target = p.turret.targetId;
+    const enemy = target != null ? this.sim.units.find((u) => u.id === target) : undefined;
+    const restX = side === 'player' ? PLAYER_BASE_X + 26 : AI_BASE_X - 26;
+    const aim = enemy ? Phaser.Math.Clamp((enemy.x - restX) * 0.4, -26, 26) : 0;
+    if (this.turretKick[side] !== 0) {
+      this.turretKick[side] *= 0.7;
+      if (Math.abs(this.turretKick[side]) < 0.05) this.turretKick[side] = 0;
+    }
+    img.x = restX + aim * 0.12 - this.turretKick[side] * (side === 'player' ? 1 : -1);
+    img.y = laneGroundY(img.x) - 6;
+  }
+
+  private announceStageIntro(playerAge: string, aiAge: string): void {
+    if (playerAge === aiAge) return;
+    this.hud.announce('AGE ADVANTAGE', `the enemy starts in the ${aiAge} age`, 3000);
+  }
+
+  /** Buy the turret or upgrade it, straight from the HUD. */
+  private tryTurret(): void {
+    if (this.sim.result !== 'playing') return;
+    if (canBuildTurret(this.sim, 'player')) {
+      this.pendingIntents.push({ type: 'turret', side: 'player' });
+      const rank = this.sim.player.turret.rank + 1;
+      audio.sfxEvolve();
+      this.hud.announce(rank === 1 ? 'TURRET RAISED' : `TURRET RANK ${rank}`, 'it defends the base', 1200);
+    } else {
+      audio.sfxError();
+    }
+  }
+
+  /** Fire the age's superweapon at the enemy cluster. */
+  private tryUltimate(): void {
+    if (this.sim.result !== 'playing') return;
+    if (!canCastUltimate(this.sim, 'player')) {
+      audio.sfxError();
+      return;
+    }
+    this.pendingIntents.push({ type: 'ultimate', side: 'player', x: this.aimUltimateAt() });
+  }
+
+  /**
+   * Aim point: the densest knot of enemy units in the lane, biased toward the
+   * front. Falls back to the mid-lane when the lane is clear.
+   */
+  private aimUltimateAt(): number {
+    const foes = this.sim.units.filter((u) => u.side === 'ai' && u.state !== 'die');
+    if (foes.length === 0) return AI_BASE_X - 120;
+    let bestX = foes[0]!.x;
+    let bestScore = -1;
+    for (const cand of foes) {
+      let score = 0;
+      for (const other of foes) if (Math.abs(other.x - cand.x) < 70) score++;
+      if (score > bestScore) { bestScore = score; bestX = cand.x; }
+    }
+    return bestX;
+  }
+
+  private gotoStage(stageId: number): void {
+    this.scene.restart({ stageId: Math.min(STAGES.length, Math.max(1, stageId)) });
+  }
+
+  /** Back to the campaign map — used by the results card's "next level" edge case. */
+  private toMenu(): void {
+    this.scene.start('MenuScene');
+  }
+
   private makeFlag(side: 'player' | 'ai'): Phaser.GameObjects.Image {
     const age = this.sim.player.age;
     const x = side === 'player' ? PLAYER_BASE_X + 30 : AI_BASE_X - 30;
@@ -333,6 +518,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
+    this.time.timeScale = 1;
+    this.speedMul = 1;
+    this.resultsShown = false;
+    this.turretRank = { player: 0, ai: 0 };
+    this.turretKick = { player: 0, ai: 0 };
     for (const u of this.unitGfx.values()) u.container.destroy();
     this.unitGfx.clear();
     for (const p of this.projGfx.values()) { p.sprite.destroy(); p.trail.destroy(); }
@@ -440,24 +630,79 @@ export class GameScene extends Phaser.Scene {
 
     this.syncUnits();
     this.syncProjectiles();
+    this.syncTurret('player');
+    this.syncTurret('ai');
     this.updateDecor();
+    this.updateMatchClock();
     this.hud.update(this.sim, canEvolve(this.sim, 'player'));
 
     if (this.sim.result !== 'playing' && !this.gameOverHandled) {
       this.gameOverHandled = true;
-      this.hud.showGameOver(this.sim.result);
-      audio.setMusicState(this.sim.result === 'win' ? 'win' : 'lose');
-      crazyGameplayStop();
-      if (this.sim.result === 'win') {
-        audio.sfxVictory();
-        voice.play('victory');
-        crazyHappytime();
-      } else {
-        audio.sfxDefeat();
-        voice.play('defeat');
-      }
-      this.shake(400, 10);
+      this.onMatchEnd();
     }
+  }
+
+  /**
+   * Timeline collapse telegraph: the banner appears the moment the clock
+   * passes the collapse tick, so the drain is never a mystery.
+   */
+  private updateMatchClock(): void {
+    if (this.sim.result !== 'playing') return;
+    const active = this.sim.tick >= COLLAPSE_START_TICK && collapseRate(this.sim.tick) > 0;
+    const justStarted = active && !this.collapseWarned;
+    if (justStarted) this.collapseWarned = true;
+    this.hud.setCollapse(active, justStarted);
+    // A low, constant tremor once the timeline is tearing apart.
+    if (active) this.shake(60, 0.6);
+  }
+
+  /**
+   * Win/lose presentation. A victory plays out in slow motion for 1.5s first —
+   * the last push and the fanfare land before the results card covers them.
+   */
+  private onMatchEnd(): void {
+    const win = this.sim.result === 'win';
+    audio.setMusicState(win ? 'win' : 'lose');
+    crazyGameplayStop();
+    if (win) {
+      audio.sfxVictory();
+      voice.play('victory');
+      crazyHappytime();
+      this.speedMul = VICTORY_SLOWMO_MUL;
+      this.time.timeScale = VICTORY_SLOWMO_MUL;
+      this.cameras.main.flash(220, 255, 224, 176, false);
+      this.time.delayedCall(VICTORY_SLOWMO_MS, () => {
+        this.time.timeScale = 1;
+        this.speedMul = 1;
+        this.showResults();
+      });
+    } else {
+      audio.sfxDefeat();
+      voice.play('defeat');
+      this.shake(400, 10);
+      this.showResults();
+    }
+  }
+
+  /** Turn the finished sim into the campaign's results card. */
+  private showResults(): void {
+    if (this.resultsShown) return;
+    this.resultsShown = true;
+    const stats = this.sim.stats;
+    const summary = {
+      stageId: this.stageId,
+      result: (this.sim.result === 'win' ? 'win' : 'loss') as 'win' | 'loss',
+      // Sim time, not wall clock: speed toggles and pauses must not inflate it.
+      elapsedMs: this.sim.tick * TICK_MS,
+      unitsSpawned: stats.unitsSpawned.player,
+      enemiesDestroyed: stats.kills.player,
+      unitsLost: stats.unitsLost.player,
+      baseHpRatio: baseHpRatio(Math.max(0, this.sim.player.baseHp)),
+    };
+    const payload: ResultsPayload = this.stageId === 0
+      ? { ...summary, stars: starRating(summary.result, summary.baseHpRatio), isBest: false, hasNextStage: false }
+      : recordResult(summary);
+    this.hud.showResults(payload);
   }
 
   private shake(ms: number, magnitude: number): void {
@@ -500,16 +745,18 @@ export class GameScene extends Phaser.Scene {
       if (!seen.has(id)) {
         if (!g.dying) {
           g.dying = true;
-          const pal = paletteFor(this.sim.player.age);
-          this.dust.setParticleTint(pal.highlight);
-          this.dust.emitParticleAt(g.container.x, g.container.y + 10, 10);
+          // Death: a red burst, a full 90 degree topple and a 250ms fade.
+          g.hpBar.setVisible(false);
+          g.hpBarBg.setVisible(false);
+          g.chev1.setVisible(false);
+          g.chev2.setVisible(false);
+          this.burst.emitParticleAt(g.container.x, g.container.y - 8, 16);
           this.tweens.add({
             targets: g.container,
             alpha: 0,
-            angle: g.container.angle + (Math.random() * 40 - 20),
-            y: g.container.y + 12,
-            scaleX: 0.4, scaleY: 0.4,
-            duration: 280,
+            angle: 90,
+            y: g.container.y + 6,
+            duration: 250,
             ease: 'Sine.easeIn',
             onComplete: () => g.container.destroy(),
           });
@@ -564,10 +811,20 @@ export class GameScene extends Phaser.Scene {
       ease: 'Back.easeOut',
     });
 
-    return {
+    // Health bars appear only when a unit is hurt or the player inspects it.
+    container.setInteractive(new Phaser.Geom.Rectangle(-fit.w * 0.7, -fit.h * 1.05, fit.w * 1.4, fit.h * 1.1), Phaser.Geom.Rectangle.Contains);
+    const g: UnitGfx = {
       id: u.id, container, sprite, shadow, hpBar, hpBarBg, chev1, chev2,
-      flashUntilMs: 0, currentVet: 0, dying: false,
+      flashUntilMs: 0, currentVet: 0, dying: false, knock: 0, lastAttackTick: u.cooldown,
+      hovered: false, wasFull: true,
     };
+    container.on('pointerover', () => { g.hovered = true; });
+    container.on('pointerout', () => { g.hovered = false; });
+    container.on('pointerdown', () => {
+      const cp = paletteFor(u.def.age);
+      this.addFloat(u.x, LANE_TOP + 60, `${AGE_LABEL[u.def.age]} ${u.def.role.toUpperCase()}`, cp.light, 30);
+    });
+    return g;
   }
 
   private updateUnitGfx(g: UnitGfx, u: UnitState): void {
@@ -578,32 +835,72 @@ export class GameScene extends Phaser.Scene {
     }
     // The container is scaled during the spawn pop-in, so animated offsets are
     // applied to the children rather than the container.
-    const targetX = u.x;
+    const targetX = u.x + g.knock;
     const targetY = this.unitGroundY(u);
     g.container.x += (targetX - g.container.x) * 0.4;
     g.container.y += (targetY - g.container.y) * 0.4;
-    // Depth follows the foot line so overlapping crowds layer correctly.
+    // Depth follows the foot line so lower units draw in front of higher ones.
     g.container.setDepth(DEPTH.unit + (targetY - LANE_TOP) / 4000);
+
+    // Micro knockback decays back to the unit's true position.
+    if (g.knock !== 0) {
+      g.knock *= 0.72;
+      if (Math.abs(g.knock) < 0.05) g.knock = 0;
+    }
 
     const walkPhase = (u.ageTicks + u.animSeed * 0.001) * 0.45;
     if (u.state === 'walk') {
-      g.sprite.y = Math.sin(walkPhase) * 2 - 2;
+      // Walk cycle: a 3px bob, a leg-tilt lean and a per-unit phase offset so a
+      // marching column never moves in lockstep.
+      const bob = Math.sin(walkPhase);
+      g.sprite.y = bob * 3 - 2;
       g.sprite.x = 0;
-      g.sprite.angle = Math.sin(walkPhase) * 3 * u.dir;
-      g.sprite.setScale(PIXEL_SCALE, PIXEL_SCALE * (1 + Math.sin(walkPhase) * 0.02));
+      g.sprite.angle = bob * 4 * u.dir;
+      g.sprite.setScale(PIXEL_SCALE, PIXEL_SCALE * (1 + bob * 0.035));
+      if (u.reserve) {
+        // Reserves hold formation: steady, weapons down, no bounce.
+        g.sprite.y = -2 + bob * 0.6;
+        g.sprite.angle = bob * 1.2 * u.dir;
+        g.sprite.setScale(PIXEL_SCALE);
+      }
     } else if (u.state === 'fight') {
       g.sprite.y = -2;
-      const atk = 1 - u.cooldown / u.def.attackRate;
+      const atk = 1 - u.cooldown / Math.max(1, u.def.attackRate);
       if (u.def.role === 'ranged') {
-        const recoil = atk < 0.12 ? 3 : 0;
-        g.sprite.x = -u.dir * recoil;
-        g.sprite.angle = recoil ? u.dir * -6 : 0;
+        // Ranged: weapon drawn forward, then a sharp recoil.
+        if (atk < 0.12) {
+          g.sprite.x = -u.dir * 4;
+          g.sprite.angle = u.dir * -7;
+          this.spawnAttackFx(u, 'muzzle');
+        } else if (atk < 0.4) {
+          g.sprite.x = u.dir * 3;
+          g.sprite.angle = 0;
+        } else {
+          g.sprite.x = 0;
+          g.sprite.angle = 0;
+        }
+      } else if (u.def.role === 'tank') {
+        // Tank: a heavy shoulder-first shove with a ground shock on contact.
+        if (atk < 0.16) {
+          g.sprite.x = -u.dir * 3;
+          g.sprite.angle = u.dir * -3;
+        } else if (atk < 0.34) {
+          g.sprite.x = u.dir * 6;
+          g.sprite.angle = u.dir * 4;
+          this.spawnAttackFx(u, 'shock');
+        } else {
+          g.sprite.x = 0;
+          g.sprite.angle = 0;
+        }
       } else if (atk < 0.14) {
-        g.sprite.x = -u.dir * 2;
-        g.sprite.angle = u.dir * -4;
+        // Melee wind-up.
+        g.sprite.x = -u.dir * 3;
+        g.sprite.angle = u.dir * -6;
       } else if (atk < 0.3) {
-        g.sprite.x = u.dir * 5;
-        g.sprite.angle = u.dir * 6;
+        // Melee slash: lunge forward with the swing arc.
+        g.sprite.x = u.dir * 6;
+        g.sprite.angle = u.dir * 8;
+        this.spawnAttackFx(u, 'slash');
       } else {
         g.sprite.x = 0;
         g.sprite.angle = 0;
@@ -630,7 +927,12 @@ export class GameScene extends Phaser.Scene {
     if (ratio < 0.3) g.hpBar.setFillStyle(unitPalette.highlight);
     else if (ratio < 0.6) g.hpBar.setFillStyle(unitPalette.accent);
     else g.hpBar.setFillStyle(u.side === 'player' ? unitPalette.body : unitPalette.highlight);
-    g.hpBarBg.setVisible(ratio < 1);
+    // A full-health unit is clean art; the bar only shows once it matters, or
+    // when the player deliberately hovers it.
+    const showBar = ratio < 1 || g.hovered;
+    g.hpBar.setVisible(showBar);
+    g.hpBarBg.setVisible(showBar);
+    g.wasFull = ratio >= 1;
 
     if (u.vet !== g.currentVet) {
       g.currentVet = u.vet;
@@ -698,9 +1000,14 @@ export class GameScene extends Phaser.Scene {
         this.hitStopMs = Math.max(this.hitStopMs, 20);
         this.shake(60, 1.5);
         for (const u of this.sim.units) {
-          if (Math.abs(u.x - ev.x) < 8 && u.state !== 'die') {
+          if (Math.abs(u.x - ev.x) < 10 && u.state !== 'die') {
             const g = this.unitGfx.get(u.id);
-            if (g) g.flashUntilMs = this.time.now + HIT_FLASH_MS;
+            if (g) {
+              g.flashUntilMs = this.time.now + HIT_FLASH_MS;
+              // Micro knockback: 2-4px, away from the hit, decaying back.
+              const away = u.side === 'player' ? -1 : 1;
+              g.knock = away * (2 + (ev.damage % 3));
+            }
           }
         }
       } else if (ev.kind === 'baseHit') {
@@ -714,10 +1021,29 @@ export class GameScene extends Phaser.Scene {
         this.shake(150, ev.damage > 20 ? 5 : 3);
         if (ev.side === 'player') this.playerBaseFlash = 8; else this.aiBaseFlash = 8;
       } else if (ev.kind === 'death') {
+        this.burst.emitParticleAt(ev.x, ev.y - 6, 12);
         this.dust.setParticleTint(p.highlight);
-        this.dust.emitParticleAt(ev.x, ev.y + 10, 12);
+        this.dust.emitParticleAt(ev.x, ev.y + 10, 8);
         this.hitStopMs = Math.max(this.hitStopMs, 35);
         this.shake(80, 2);
+      } else if (ev.kind === 'turretShot') {
+        this.fireTurretFx(ev.side, ev.fromX, ev.toX, ev.toY, ev.age);
+      } else if (ev.kind === 'turretBuilt') {
+        const tp = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
+        const bx = ev.side === 'player' ? PLAYER_BASE_X + 26 : AI_BASE_X - 26;
+        this.addFloat(bx, LANE_TOP + 34, `TURRET ${ev.rank}`, tp.highlight, 46);
+      } else if (ev.kind === 'ultCast') {
+        const cp = paletteFor(ev.age);
+        this.hud.announce(ULT_DEFS[ev.age].label.toUpperCase(), ev.side === 'player' ? 'incoming' : 'brace!', 1400);
+        this.addFloat(ev.x, LANE_BOTTOM - 30, ev.strike === 'meteor' ? 'METEOR STRIKE' : ev.strike === 'volley' ? 'RAIN OF FIRE' : 'AIRSTRIKE', cp.light, 54);
+        this.shake(300, 6);
+        audio.sfxEvolve();
+      } else if (ev.kind === 'strike') {
+        this.impactStrikeFx(ev.strike, ev.x, ev.y, ev.radius, ev.side);
+      } else if (ev.kind === 'collapse') {
+        this.hud.announce('TIMELINE COLLAPSE', 'both bases are decaying - finish it', 3000);
+        this.shake(900, 7);
+        audio.sfxDefeat();
       } else if (ev.kind === 'gold') {
         const gp = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
         this.addFloat(
@@ -762,6 +1088,110 @@ export class GameScene extends Phaser.Scene {
     // Simulation events are a one-frame hand-off to the renderer. Keeping them
     // around made every hit, sound and floating number replay on every tick.
     this.sim.events = this.sim.events.filter((event) => event.kind === 'gameover');
+  }
+
+  /**
+   * Code-driven weapon effect. Melee units swing an arc from the weapon tip,
+   * tanks crack the ground at their feet and ranged units flash at the muzzle;
+   * each is timed off the same attack cooldown the sim uses, so the animation
+   * always matches the damage.
+   */
+  private spawnAttackFx(u: UnitState, kind: 'slash' | 'muzzle' | 'shock'): void {
+    const key = `fx_${kind}_${u.def.age}`;
+    if (!this.textures.exists(key)) return;
+    const origin = FX_ORIGIN[key] ?? { x: 0.5, y: 0.5 };
+    const lift = u.def.role === 'tank' ? 6 : u.def.role === 'ranged' ? 30 : 26;
+    const forward = u.def.role === 'tank' ? 10 : 12;
+    const x = u.x + u.dir * forward;
+    const y = this.unitGroundY(u) - lift;
+    const fx = this.add.image(x, y, key)
+      .setOrigin(origin.x, origin.y)
+      .setScale(PIXEL_SCALE)
+      .setDepth(DEPTH.unit + 0.5);
+    if (u.dir === -1) fx.setFlipX(true);
+    if (kind === 'slash') {
+      fx.setAngle(u.dir * -50);
+      this.tweens.add({ targets: fx, angle: u.dir * 55, alpha: 0, duration: 170, onComplete: () => fx.destroy() });
+    } else if (kind === 'shock') {
+      fx.setScale(PIXEL_SCALE * 0.6);
+      this.tweens.add({ targets: fx, scaleX: PIXEL_SCALE * 1.5, scaleY: PIXEL_SCALE * 1.5, alpha: 0, duration: 200, onComplete: () => fx.destroy() });
+    } else {
+      this.tweens.add({ targets: fx, alpha: 0, scaleX: PIXEL_SCALE * 1.3, duration: 110, onComplete: () => fx.destroy() });
+    }
+  }
+
+  /**
+   * Tracer + muzzle flash for a base turret shot, so "the turret is firing"
+   * is legible even when the target is off the edge of the lane.
+   */
+  private fireTurretFx(side: 'player' | 'ai', fromX: number, toX: number, toY: number, age: 'stone' | 'medieval' | 'modern'): void {
+    const pal = paletteFor(age);
+    const fromY = LANE_TOP + 42;
+    const g = this.add.graphics().setDepth(DEPTH.projectile);
+    g.lineStyle(2, side === 'player' ? pal.accent : pal.highlight, 0.85);
+    g.lineBetween(fromX, fromY, toX, toY);
+    this.tweens.add({ targets: g, alpha: 0, duration: 130, onComplete: () => g.destroy() });
+
+    const muzzleKey = `fx_muzzle_${age}`;
+    if (this.textures.exists(muzzleKey)) {
+      const fit = TURRET_FIT[age];
+      const flash = this.add.image(fromX, fromY, muzzleKey).setOrigin(0, 0.5).setScale(PIXEL_SCALE * 1.2).setDepth(DEPTH.particles);
+      if (side === 'ai') flash.setFlipX(true);
+      void fit;
+      this.tweens.add({ targets: flash, alpha: 0, scaleX: PIXEL_SCALE * 0.6, duration: 140, onComplete: () => flash.destroy() });
+    }
+    this.turretKick[side] = 5;
+    this.shake(70, 2);
+    if (side === 'ai') audio.sfxBaseHit(); else audio.sfxArrow(age);
+  }
+
+  /** Superweapon impact: a flying projectile into a blast, plus shake and flash. */
+  private impactStrikeFx(kind: StrikeKind, x: number, y: number, radius: number, side: 'player' | 'ai'): void {
+    const age = side === 'player' ? this.sim.player.age : this.sim.ai.age;
+    const pal = paletteFor(age);
+    const key = kind === 'meteor' ? 'fx_meteor' : kind === 'airstrike' ? 'fx_bomb' : 'fx_muzzle';
+
+    // Falling projectile: meteors arrive from above, the bomber's stick comes
+    // in flat from the enemy side.
+    if (this.textures.exists(`${key}_${age}`)) {
+      const img = this.add.image(x, kind === 'volley' ? y - 180 : LANE_TOP - 30, `${key}_${age}`)
+        .setOrigin(0.5)
+        .setScale(PIXEL_SCALE * 1.4)
+        .setDepth(DEPTH.strike);
+      if (kind === 'volley') img.setAngle(20);
+      this.strikeLayer.add(img);
+      this.tweens.add({
+        targets: img,
+        y,
+        angle: kind === 'volley' ? -10 : 0,
+        duration: 180,
+        ease: 'Quad.easeIn',
+        onComplete: () => img.destroy(),
+      });
+    }
+
+    // Blast: expanding ring + scorch puff + a bright flash for meteors.
+    const ring = this.add.circle(x, y + 6, radius * 0.35, pal.highlight, 0.55).setDepth(DEPTH.particles);
+    this.tweens.add({
+      targets: ring,
+      scaleX: 3.1,
+      scaleY: 1.4,
+      alpha: 0,
+      duration: 320,
+      onComplete: () => ring.destroy(),
+    });
+    const scorch = this.add.ellipse(x, y + 14, radius * 1.1, 16, pal.dark, 0.45).setOrigin(0.5).setDepth(DEPTH.particles);
+    this.tweens.add({ targets: scorch, alpha: 0, duration: 900, onComplete: () => scorch.destroy() });
+
+    this.dust.setParticleTint(pal.highlight);
+    this.dust.emitParticleAt(x, y + 6, kind === 'meteor' ? 22 : 14);
+    this.dust.setParticleTint(pal.accent);
+    this.dust.emitParticleAt(x, y + 12, 12);
+
+    this.shake(220, STRIKE_SHAKE[kind]);
+    this.cameras.main.flash(90, 255, kind === 'volley' ? 150 : 220, 120, false);
+    this.hitStopMs = Math.max(this.hitStopMs, 45);
+    audio.sfxBaseHit();
   }
 
   private addFloat(x: number, y: number, text: string, color: number, ttl: number): void {

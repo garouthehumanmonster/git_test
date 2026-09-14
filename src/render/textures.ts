@@ -5,6 +5,18 @@ import { UNIT_ART, UNIT_SIZES, unitKey } from './unitart';
 import { AGE_PROPS } from './propart';
 import { BASE_ART, BASE_CANVAS, BASE_FOOT_ROW } from './basearth';
 import { makeTexture, paintOps, r, tri, type SpriteOp } from './spriteops';
+import {
+  FX_DEFS,
+  FX_FIT,
+  ICON_CANVAS,
+  ICON_TURRET_ART,
+  ICON_ULT_ART,
+  TURRET_ART,
+  TURRET_CANVAS,
+  turretIconKey,
+  turretKey,
+  ultIconKey,
+} from './turretart';
 import { PORTRAIT_ART, PORTRAIT_CANVAS } from './portraits';
 
 const AGES: Age[] = ['stone', 'medieval', 'modern'];
@@ -26,6 +38,44 @@ export function generateTextures(scene: Phaser.Scene): void {
   generateFlagTextures(scene);
   generateUITextures(scene);
   generateFlameTextures(scene);
+  generateTurretTextures(scene);
+  generateFxTextures(scene);
+}
+
+/** Base-defence turrets — one silhouette per age, tinted per side. */
+function generateTurretTextures(scene: Phaser.Scene): void {
+  for (const age of AGES) {
+    const pal = paletteFor(age);
+    for (const side of ['player', 'ai'] as const) {
+      makeTexture(
+        scene,
+        turretKey(age, side),
+        TURRET_ART[age],
+        pal,
+        TEAM_COLORS[side],
+        TURRET_CANVAS.w,
+        TURRET_CANVAS.h,
+        TURRET_CANVAS.foot,
+      );
+    }
+  }
+}
+
+/** Attack and superweapon effect sprites (slash arcs, muzzles, meteors). */
+function generateFxTextures(scene: Phaser.Scene): void {
+  for (const age of AGES) {
+    const pal = paletteFor(age);
+    for (const def of FX_DEFS) {
+      const fit = FX_FIT[def.key]!;
+      makeTexture(scene, `${def.key}_${age}`, def.ops, pal, 0xffffff, fit.w, fit.h);
+    }
+    for (const [key, ops] of [
+      [turretIconKey(age), ICON_TURRET_ART[age]],
+      [ultIconKey(age), ICON_ULT_ART[age]],
+    ] as const) {
+      makeTexture(scene, key, ops, pal, TEAM_COLORS.player, ICON_CANVAS.w, ICON_CANVAS.h);
+    }
+  }
 }
 
 function generateUnitTextures(scene: Phaser.Scene): void {

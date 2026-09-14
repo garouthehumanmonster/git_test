@@ -1,7 +1,83 @@
 # Self-Review — Timeline War
 
 Scores over time: **8.7 / 10** (initial) → **7.5 / 10** (external audit) →
-**8.8 / 10** (bug-fix pass) → **9.3 / 10** (presentation rebuild).
+**8.8 / 10** (bug-fix pass) → **9.3 / 10** (presentation rebuild) →
+**9.4 / 10** (combat, agency and campaign pass).
+
+## Combat, Agency And Campaign — 2026-09-14
+
+The presentation pass made the game look like a product; it did not make it play
+like one. Two armies still met in the middle and mashed into one pixel, the
+player had nothing to spend gold on except more of the same units, and a match
+could run until both sides got bored. This pass fixes the game underneath the
+art.
+
+### The lane fights as a formation
+
+Units take a lane rank from their own id — `(id % 5 - 2) * 12`, five ranks in a
+48px corridor — so a push arrives as a column with vertical separation instead
+of a single line. Rank is derived rather than drawn from the seeded RNG, which
+keeps replay state identical while still looking scattered. Depth sorting
+follows each unit's foot row, so the lower of two overlapping units draws in
+front.
+
+**Engagement slots.** No more than **three melee units per side** may engage one
+target; everyone else becomes a *reserve* and holds a 16–24px following distance
+until a front slot opens. Reserves stand steady (no walk bounce), which is what
+makes the front line readable at a glance. Ranged units are deliberately exempt:
+capping them throttled an army's damage to a fraction of its strength and turned
+every push into a stalemate — measured, not assumed (21 timeouts in 60 matches
+with the cap applied to archers, 0 afterwards).
+
+**Stalemate breakers.** Tank melee hits cleave for 35% onto anything within 30px
+of the primary target, and soft friendly separation keeps a stalled front porous
+enough for reinforcements to feed through.
+
+**The match resolves.** Two evenly fed armies on one lane have a natural
+equilibrium, and an equilibrium is a terrible product: the first version of this
+pass ended 40–60% of matches in a 10-minute timeout. Three mechanics fix that,
+in order of importance: the *siege zone* (a unit that gets within 84px of the
+enemy tower hits the tower instead of trading with stragglers, so a breached
+line converts), *tug-of-war pressure* (the side with more weight inside the
+clash zone presses the line forward at up to 0.85px/tick, so numbers buy
+ground), and a *timeline collapse* after four minutes that drains both bases
+equally. The collapse cannot flip a match — it only guarantees one ends — and it
+gives the base HP you finish with a real meaning, which is exactly what the star
+rating scores.
+
+### The player has agency
+
+- **Base turrets**: one per side, three ranks, per-age variants (stone slingshot,
+  medieval ballista volley, modern twin flak). They auto-target the nearest enemy
+  within 250px of the tower, and the art, recoil, tracer and muzzle flash are all
+  procedural.
+- **Superweapons**: a single ultimate meter per side, charged passively and by
+  kills (9 per kill). Meteor Strike, Rain of Fire and Airstrike every impact is
+  pre-rolled from `state.rngState` at cast time, so replays stay byte-identical;
+  the renderer only plays back what the sim already decided.
+- **Results and progression**: five stages with genuinely different AI scripts
+  (a stone mirror, an iron wall, an AI with an age head start, a modern blitz,
+  and a boss with a faster economy and superweapons), 1–3 stars on surviving base
+  HP, best clear time, and `localStorage["timeline_war_campaign_v1"]`.
+
+### Juice
+
+Walk cycles carry a 3px bob, a body lean and a per-unit phase offset; attacks
+lunge 6px with a swing arc, a muzzle star or a ground shock; hits are a 60ms
+white flash plus 2–4px of decaying knockback; deaths burst red, topple exactly
+90 degrees and fade in 250ms. Health bars appear only when a unit is wounded or
+hovered. Victories play out at 0.3x for 1.5s with a fanfare before the results
+card lands.
+
+### What this cost, and what it bought
+
+The AI and the headless balance bot now share one brain (`chooseBotIntent`), so
+self-play is a true mirror match and the balance number finally means something:
+**`npm run sim 30` → 15W/15L, 0 timeouts, 4.3 minute average, 6.2 minute worst
+case.** The anti-clump rules are pinned by tests rather than by eye: max melee
+attackers per target is asserted `<= 3`, and no two units of one side may share
+a lane slot within 8px.
+
 
 ## Presentation Rebuild — 2026-09-14
 
@@ -75,28 +151,39 @@ covered by tests.
 
 ## Remaining Weaknesses (why this is not a 10)
 
-1. **No browser-level regression suite.** Rendering is verified through the
-   offline rasteriser and the type system, not through a real WebGL context in a
-   headless browser, so a Phaser-version-specific runtime breakage would not be
-   caught by CI today.
-2. **Phaser bundle size.** The production build is still a ~385 KB gzipped
+1. **No browser-level regression suite.** The new screens (campaign map, results
+   card, turret and superweapon wiring) are typechecked and their logic is unit
+   tested, but a Phaser-specific runtime error in them would only surface in a
+   real browser.
+2. **Turret balance is untuned against a human.** The AI buys turrets on the
+   same cadence as the balance bot, so self-play cannot tell whether turrets are
+   overpowered against a player who rushes them.
+3. **The collapse is a safety net, not a skill ceiling.** Roughly half of
+   self-play matches are still decided by the collapse rather than by a
+   breakthrough; raising the pressure rate further risks making numbers
+   unstoppable, which needs play-testing to settle.
+4. **Rendering is verified offline.** Visual output is checked through the
+   software rasteriser and the type system, not through a real WebGL context, so
+   a Phaser-version-specific rendering breakage would not be caught by CI.
+5. **Phaser bundle size.** The production build is still a ~385 KB gzipped
    single chunk; the large-chunk warning is expected until the game is
    code-split or Phaser is partially imported.
-3. **AI is a heuristic, not a planner.** It counters composition and buys
+6. **AI is a heuristic, not a planner.** It counters composition and buys
    upgrades on a cadence, but it does not scout, bait, or time pushes.
-4. **Single map, single lane.** The presentation now has depth, but there is
+7. **Single map, single lane.** The presentation now has depth, but there is
    still only one battlefield to play on.
-5. **Audio is synthesised, not scored.** The chiptune sequencer is deliberately
+8. **Audio is synthesised, not scored.** The chiptune sequencer is deliberately
    simple, and the announcer is a generated voice run through a radio chain
    rather than recorded VO.
 
 ## Quality Gates
 
 - TypeScript: clean (`tsc --noEmit`, 0 errors).
-- Tests: **43 passing** (`vitest run`) — sim units, combat, transitions, RNG
-  validation, golden determinism replays, and the 23-test art contract suite.
+- Tests: **79 passing** (`vitest run`) — sim units, combat, transitions, RNG
+  validation, golden determinism replays, the art contract suite, engagement-slot
+  and match-resolution invariants, and the campaign progression rules.
 - Art pipeline: `npm run art:build` is deterministic; CI fails on asset drift.
 - Previews: `npm run art:preview` renders all three ages without a browser.
 - Bundle: `vite build` succeeds (~385 KB gzipped, one expected size warning).
-- Balance: `npm run sim 50` finishes without timeouts; both sides use the same
-  upgrade and composition policy.
+- Balance: `npm run sim 30` → 15W/15L, 0 timeouts, 4.3 minute average; both
+  sides run the same brain, so the only asymmetry is the stage rules.

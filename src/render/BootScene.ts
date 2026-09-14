@@ -22,6 +22,7 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     generateTextures(this);
-    this.scene.start('GameScene');
+    // The campaign front end comes first; it hands a stage id to GameScene.
+    this.scene.start('MenuScene');
   }
 }

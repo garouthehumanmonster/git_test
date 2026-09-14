@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BootScene } from './render/BootScene';
+import { MenuScene } from './render/MenuScene';
 import { GameScene } from './render/GameScene';
 import { LANE_WIDTH, LANE_HEIGHT } from './sim/types';
 import { initCrazyGames } from './crazygames';
@@ -18,7 +19,7 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
-  scene: [BootScene, GameScene],
+  scene: [BootScene, MenuScene, GameScene],
   dom: { createContainer: false },
 };
 

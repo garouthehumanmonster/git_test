@@ -21,6 +21,15 @@ import {
 } from '../src/sim/types';
 import type { Age, UnitRole } from '../src/sim/types';
 import { UNIT_ART, UNIT_FIT } from '../src/render/unitart';
+import {
+  FX_DEFS,
+  FX_FIT,
+  ICON_CANVAS,
+  ICON_TURRET_ART,
+  ICON_ULT_ART,
+  TURRET_ART,
+  TURRET_FIT,
+} from '../src/render/turretart';
 import { BASE_ART, BASE_FIT } from '../src/render/basearth';
 import { AGE_PROPS, PROP_LAYOUT } from '../src/render/propart';
 import { PORTRAIT_ART, PORTRAIT_CANVAS } from '../src/render/portraits';
@@ -133,6 +142,15 @@ function renderScene(age: Age): SoftGfx {
     blit(g, flagRaster, x + (side === 'player' ? 26 : -26), groundY - 150, PIXEL_SCALE, 0xffffff, 1, 0, 0.5);
   }
 
+  // 5b. Base-defence turret, standing beside each tower.
+  for (const side of ['player', 'ai'] as const) {
+    const turretFit = TURRET_FIT[age];
+    const tx = (side === 'player' ? PLAYER_BASE_X : AI_BASE_X) + (side === 'player' ? 26 : -26);
+    const turretGround = Math.round(laneGroundY(tx) - 4);
+    const turretRaster = rasterize(turretFit.w, turretFit.h, TURRET_ART[age], age, TEAM_COLORS[side], turretFit.dx, turretFit.dy);
+    blit(g, turretRaster, tx, turretGround, PIXEL_SCALE, 0xffffff, 1, 0.5, 0.92);
+  }
+
   // 6. Units with foot-line shadows and health pips.
   for (const [role, side, x, spread] of LINE) {
     const groundY = Math.round(laneGroundY(x) + spread * 8 + 2);
@@ -145,6 +163,21 @@ function renderScene(age: Age): SoftGfx {
     fill(g, x - barW / 2, barY, barW, 5, pal.dark, 0.9);
     const ratio = 0.35 + ((x * 7) % 6) / 10;
     fill(g, x - barW / 2, barY, Math.round(barW * Math.min(1, ratio)), 5, side === 'player' ? pal.body : pal.highlight);
+  }
+
+  // 6b. Attack and superweapon effects, drawn where they appear in play.
+  const fxSlots: Array<[string, number, number]> = [
+    ['fx_slash', 0.34, -30],
+    ['fx_muzzle', 0.5, -30],
+    ['fx_shock', 0.62, -10],
+    ['fx_meteor', 0.78, -150],
+  ];
+  for (const [key, at, lift] of fxSlots) {
+    const def = FX_DEFS.find((d) => d.key === key);
+    if (!def) continue;
+    const fit = FX_FIT[key]!;
+    const raster = rasterize(fit.w, fit.h, def.ops, age, 0xffffff);
+    blit(g, raster, Math.round(at * LANE_WIDTH), Math.round(laneGroundY(at * LANE_WIDTH) + lift), PIXEL_SCALE, 0xffffff, 1, 0.5, def.origin?.y ?? 0.5);
   }
 
   // 7. A projectile in flight.
@@ -243,6 +276,90 @@ function renderUnitSheet(age: Age): SoftGfx {
   return g;
 }
 
+/**
+ * Contact sheet for the art added by the combat pass: turrets, attack effects
+ * and HUD icons, each at the exact scale it appears in play. Rows are ages;
+ * columns are turret / effect / icon.
+ */
+function renderKitSheet(): SoftGfx {
+  const cellW = 172;
+  const cellH = 150;
+  const pad = 10;
+  const g = new SoftGfx(cellW * 3, cellH * 3);
+  fill(g, 0, 0, g.width, g.height, 0x0b0918);
+
+  interface Item {
+    age: Age;
+    ops: SpriteOp[];
+    fit: { w: number; h: number; foot: number; dx: number; dy: number };
+    team: number;
+  }
+
+  AGES.forEach((age, row) => {
+    const items: Item[] = [
+      {
+        age,
+        ops: TURRET_ART[age],
+        fit: TURRET_FIT[age],
+        team: TEAM_COLORS.player,
+      },
+      {
+        age,
+        ops: FX_DEFS[row === 0 ? 0 : row === 1 ? 1 : 2]!.ops,
+        fit: FX_FIT[FX_DEFS[row === 0 ? 0 : row === 1 ? 1 : 2]!.key]!,
+        team: 0xffffff,
+      },
+      {
+        age,
+        ops: row === 0 ? ICON_TURRET_ART[age] : row === 1 ? ICON_ULT_ART[age] : ICON_ULT_ART[age],
+        fit: { w: ICON_CANVAS.w, h: ICON_CANVAS.h, foot: ICON_CANVAS.h, dx: 0, dy: 0 },
+        team: TEAM_COLORS.player,
+      },
+    ];
+
+    items.forEach((item, col) => {
+      const x0 = col * cellW;
+      const y0 = row * cellH;
+      const pal = paletteFor(age);
+      fill(g, x0 + pad, y0 + pad, cellW - pad * 2, cellH - pad * 2, pal.panel, 1);
+      // Frame in the age's accent so the rows read apart at a glance.
+      fill(g, x0 + pad, y0 + pad, cellW - pad * 2, 2, pal.edge, 1);
+      fill(g, x0 + pad, y0 + cellH - pad - 2, cellW - pad * 2, 2, pal.edge, 1);
+      fill(g, x0 + pad, y0 + pad, 2, cellH - pad * 2, pal.edge, 1);
+      fill(g, x0 + cellW - pad - 2, y0 + pad, 2, cellH - pad * 2, pal.edge, 1);
+
+      const raster = rasterize(item.fit.w, item.fit.h, item.ops, item.age, item.team, item.fit.dx, item.fit.dy);
+      const cx = x0 + cellW / 2;
+      const groundY = y0 + cellH - pad - 22;
+      ellipse(g, cx, groundY - 1, item.fit.w * 0.9, 8, 0x000000, 0.35);
+      blit(g, raster, cx, groundY, PIXEL_SCALE, 0xffffff, 1, 0.5, item.fit.foot / item.fit.h);
+    });
+  });
+  return g;
+}
+
+/**
+ * Integer-scaled crop, written to the (gitignored) preview folder so new art
+ * can be inspected at pixel level without shipping the zoom.
+ */
+function zoomCrop(src: SoftGfx, x0: number, y0: number, w: number, h: number, k: number): SoftGfx {
+  const out = new SoftGfx(w * k, h * k);
+  for (let y = 0; y < h * k; y++) {
+    for (let x = 0; x < w * k; x++) {
+      const sx = x0 + Math.floor(x / k);
+      const sy = y0 + Math.floor(y / k);
+      if (sx < 0 || sy < 0 || sx >= src.width || sy >= src.height) continue;
+      const si = (sy * src.width + sx) * 4;
+      const di = (y * out.width + x) * 4;
+      out.data[di] = src.data[si]!;
+      out.data[di + 1] = src.data[si + 1]!;
+      out.data[di + 2] = src.data[si + 2]!;
+      out.data[di + 3] = src.data[si + 3]!;
+    }
+  }
+  return out;
+}
+
 /** Half-size nearest-neighbour downscale, for the combined overview sheet. */
 function halve(src: SoftGfx): SoftGfx {
   const out = new SoftGfx(Math.floor(src.width / 2), Math.floor(src.height / 2));
@@ -289,6 +406,8 @@ function main(): void {
   for (const age of AGES) {
     const scene = renderScene(age);
     scenes[age] = scene;
+    const detail = zoomCrop(scene, 20, 260, 460, 240, 3);
+    writeFileSync(join(ROOT, 'art', 'preview', `detail_${age}.png`), encodePng(detail.width, detail.height, detail.data));
     const png = encodePng(scene.width, scene.height, scene.data);
     writeFileSync(join(ROOT, 'docs', `scene_${age}.png`), png);
     writeFileSync(join(ROOT, 'art', 'preview', `scene_${age}.png`), png);
@@ -300,6 +419,11 @@ function main(): void {
   }
   const overview = composeOverview(scenes, sheets);
   const overviewPng = encodePng(overview.width, overview.height, overview.data);
+  const kit = renderKitSheet();
+  const kitPng = encodePng(kit.width, kit.height, kit.data);
+  writeFileSync(join(ROOT, 'docs', 'kit.png'), kitPng);
+  console.log(`kit.png  ${kit.width}x${kit.height}  ${(kitPng.length / 1024).toFixed(1)} KB`);
+
   writeFileSync(join(ROOT, 'docs', 'overview.png'), overviewPng);
   console.log(`overview.png  ${overview.width}x${overview.height}  ${(overviewPng.length / 1024).toFixed(1)} KB`);
 }

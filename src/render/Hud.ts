@@ -1,16 +1,22 @@
 import Phaser from 'phaser';
 import type { SimState, UnitRole } from '../sim/types';
+import type { ResultsPayload } from '../campaign';
 import {
   AGE_LABEL,
   ARMOR_COSTS,
+  TURRET_COSTS,
   BASE_HP,
   EVOLVE_COST,
   EVOLVE_XP_REQ,
   FORGE_COSTS,
   LANE_HEIGHT,
+  LANE_TOP,
   LANE_WIDTH,
+  MAX_TURRET_RANK,
   MAX_UPGRADE_RANK,
   ROLE_HOTKEY,
+  ULT_DEFS,
+  ULT_MAX,
   UNIT_DEFS,
 } from '../sim/types';
 import { colorHex } from './palette';
@@ -98,6 +104,10 @@ export class Hud {
   onTogglePause?: () => void;
   onCycleSpeed?: () => void;
   onRewardedAdRequest?: () => void;
+  onTurretRequest?: () => void;
+  onUltimateRequest?: () => void;
+  onNextStageRequest?: () => void;
+  onMenuRequest?: () => void;
 
   private buttons: Array<{
     role: UnitRole;
@@ -132,6 +142,26 @@ export class Hud {
     hotkey: Phaser.GameObjects.Text;
   }> = {} as never;
 
+  private turretBtn!: {
+    bg: Phaser.GameObjects.Rectangle;
+    icon: Phaser.GameObjects.Image;
+    label: Phaser.GameObjects.Text;
+    cost: Phaser.GameObjects.Text;
+    hotkey: Phaser.GameObjects.Text;
+    pips: Phaser.GameObjects.Rectangle[];
+    frame: Phaser.GameObjects.Graphics;
+  };
+  private ultBtn!: {
+    bg: Phaser.GameObjects.Rectangle;
+    icon: Phaser.GameObjects.Image;
+    label: Phaser.GameObjects.Text;
+    meter: Phaser.GameObjects.Rectangle;
+    meterBg: Phaser.GameObjects.Rectangle;
+    hotkey: Phaser.GameObjects.Text;
+    frame: Phaser.GameObjects.Graphics;
+    pulse: number;
+  };
+  private collapseBanner!: Phaser.GameObjects.Container;
   private gameOverGroup?: Phaser.GameObjects.Container;
   private pauseOverlay?: Phaser.GameObjects.Container;
   private speedBtn!: Phaser.GameObjects.Text;
@@ -141,10 +171,12 @@ export class Hud {
 
   static readonly BAR_W = 180;
   static readonly BAR_H = 14;
-  static readonly BTN_W = 148;
+  static readonly BTN_W = 124;
   static readonly BTN_H = 66;
-  static readonly UPG_BTN_W = 104;
-  static readonly EVOLVE_BTN_W = 132;
+  static readonly UPG_BTN_W = 88;
+  static readonly EVOLVE_BTN_W = 108;
+  static readonly TURRET_BTN_W = 96;
+  static readonly ULT_BTN_W = 100;
   static readonly PANEL_Y = PANEL_Y;
   static readonly SPAWN_LOCK_TICKS = 8;
 
@@ -228,8 +260,9 @@ export class Hud {
     // Action bar
     const roles: UnitRole[] = ['swarm', 'tank', 'ranged'];
     const btnW = Hud.BTN_W, btnH = Hud.BTN_H, upgW = Hud.UPG_BTN_W;
-    const gap = 8;
-    const totalW = btnW * 3 + upgW * 2 + Hud.EVOLVE_BTN_W + gap * 5;
+    const turretW = Hud.TURRET_BTN_W, ultW = Hud.ULT_BTN_W;
+    const gap = 6;
+    const totalW = btnW * 3 + upgW * 2 + Hud.EVOLVE_BTN_W + turretW + ultW + gap * 7;
     let x = (w - totalW) / 2 + btnW / 2;
     const y = PANEL_Y + Math.round((LANE_HEIGHT - PANEL_Y) / 2);
     for (const role of roles) {
@@ -240,6 +273,10 @@ export class Hud {
     x += upgW + gap;
     this.makeUpgradeButton(x, y, upgW, btnH, 'armor');
     x += upgW + gap;
+    this.makeTurretButton(x, y, turretW, btnH);
+    x += turretW + gap;
+    this.makeUltimateButton(x, y, ultW, btnH);
+    x += ultW + gap;
     this.makeEvolveButton(x, y, Hud.EVOLVE_BTN_W, btnH);
 
     this.subtitle = s.add.text(w / 2, PANEL_Y - 12, '', {
@@ -247,7 +284,40 @@ export class Hud {
       stroke: '#171009', strokeThickness: 4,
     }).setOrigin(0.5).setDepth(10);
 
+    this.makeCollapseBanner();
     this.applyTheme(THEMES.stone);
+  }
+
+  /**
+   * Warning strip shown when the timeline starts tearing itself apart. The
+   * collapse drains both bases, so the player needs to know the clock is now
+   * the enemy as much as the lane is.
+   */
+  private makeCollapseBanner(): void {
+    const s = this.scene;
+    const c = s.add.container(LANE_WIDTH / 2, LANE_TOP - 26).setDepth(14).setVisible(false);
+    const bg = s.add.rectangle(0, 0, 460, 34, 0x171009, 0.82).setStrokeStyle(2, 0xd64a4a);
+    const t = s.add.text(0, -6, 'TIMELINE COLLAPSE', {
+      fontFamily: 'monospace', fontSize: '15px', color: '#d64a4a', fontStyle: 'bold',
+      stroke: '#171009', strokeThickness: 4,
+    }).setOrigin(0.5);
+    const t2 = s.add.text(0, 9, 'both bases are decaying - win the race', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#ffe0b0',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(0.5);
+    c.add([bg, t, t2]);
+    this.collapseBanner = c;
+  }
+
+  /** Show the collapse warning; the second argument dims it once it is old news. */
+  setCollapse(active: boolean, justStarted = false): void {
+    this.collapseBanner.setVisible(active);
+    if (!active) return;
+    if (justStarted) {
+      this.collapseBanner.setScale(1.3).setAlpha(0);
+      this.scene.tweens.add({ targets: this.collapseBanner, scaleX: 1, scaleY: 1, alpha: 1, duration: 320, ease: 'Back.easeOut' });
+    }
+    this.collapseBanner.setAlpha(0.75 + Math.sin(this.scene.time.now / 220) * 0.25);
   }
 
   // ------------------------------------------------- panel/frame drawing
@@ -369,6 +439,56 @@ export class Hud {
     bg.on('pointerover', () => bg.setFillStyle(0x8a5a2c));
     bg.on('pointerout', () => bg.setFillStyle(0x4d3720));
     this.evolveBtn = { bg, icon, label, cost, hotkey, frame, pulse: 0 };
+  }
+
+  /** Base-defence turret: bought once, then upgraded twice, straight from the HUD. */
+  private makeTurretButton(x: number, y: number, w: number, h: number): void {
+    const s = this.scene;
+    const frame = s.add.graphics().setDepth(10);
+    const bg = s.add.rectangle(x, y, w - 6, h - 6, 0x4d3720).setOrigin(0.5).setDepth(11).setInteractive({ useHandCursor: true });
+    const icon = s.add.image(x, y - h / 2 + 22, 'icon_turret_stone').setOrigin(0.5).setScale(PIXEL_SCALE).setDepth(12);
+    const label = s.add.text(x, y + 6, 'TURRET', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ffe0b0', fontStyle: 'bold',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(12);
+    const cost = s.add.text(x, y + h / 2 - 18, '', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#f4c85b',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(12);
+    const hotkey = s.add.text(x + w / 2 - 10, y - h / 2 + 8, 'T', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ffe0b0',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(1, 0).setDepth(12);
+    const pips: Phaser.GameObjects.Rectangle[] = [];
+    for (let i = 0; i < MAX_TURRET_RANK; i++) {
+      pips.push(s.add.rectangle(x - 12 + i * 12, y + 20, 8, 4, 0x2b1e12).setDepth(12).setOrigin(0.5));
+    }
+    bg.on('pointerdown', () => this.onTurretRequest?.());
+    bg.on('pointerover', () => bg.setFillStyle(0x8a5a2c));
+    bg.on('pointerout', () => bg.setFillStyle(0x4d3720));
+    this.turretBtn = { bg, icon, label, cost, hotkey, pips, frame };
+  }
+
+  /** Shared ultimate meter: charges with time and kills, fires the age's superweapon. */
+  private makeUltimateButton(x: number, y: number, w: number, h: number): void {
+    const s = this.scene;
+    const frame = s.add.graphics().setDepth(10);
+    const bg = s.add.rectangle(x, y, w - 6, h - 6, 0x171009).setOrigin(0.5).setDepth(11).setInteractive({ useHandCursor: true });
+    const icon = s.add.image(x, y - h / 2 + 20, 'icon_ult_stone').setOrigin(0.5).setScale(PIXEL_SCALE).setDepth(12);
+    const label = s.add.text(x, y + 4, 'METEOR', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#ffe0b0', fontStyle: 'bold',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(12);
+    const meterBg = s.add.rectangle(x, y + h / 2 - 16, w - 20, 7, 0x2b1e12).setOrigin(0.5).setDepth(12);
+    const meter = s.add.rectangle(x - (w - 20) / 2, y + h / 2 - 16, w - 20, 7, 0xf4c85b).setOrigin(0, 0.5).setDepth(13);
+    const hotkey = s.add.text(x + w / 2 - 10, y - h / 2 + 8, 'SPC', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#ffe0b0',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(1, 0).setDepth(12);
+    bg.on('pointerdown', () => this.onUltimateRequest?.());
+    bg.on('pointerover', () => bg.setFillStyle(0x2b1e12));
+    bg.on('pointerout', () => bg.setFillStyle(0x171009));
+    this.ultBtn = { bg, icon, label, meter, meterBg, hotkey, frame, pulse: 0 };
   }
 
   private makeUpgradeButton(x: number, y: number, w: number, h: number, which: 'forge' | 'armor'): void {
@@ -585,6 +705,59 @@ export class Hud {
       btn.pips.forEach((pip, i) => pip.setFillStyle(i < rank ? accent : theme.panelLight));
     });
 
+    // Turret: buy or upgrade, always at the player's current age.
+    {
+      const btn = this.turretBtn;
+      const maxed = p.turret.rank >= MAX_TURRET_RANK;
+      const cost = maxed ? 0 : TURRET_COSTS[p.age][p.turret.rank]!;
+      const affordable = !maxed && p.gold >= cost && state.result === 'playing';
+      this.drawBtnFrame(
+        btn.frame,
+        btn.bg.x - btn.bg.width / 2, btn.bg.y - btn.bg.height / 2,
+        btn.bg.width, btn.bg.height,
+        { ...theme, btnReady: theme.gold, btnLocked: theme.panelDark, borderGlow: theme.gold },
+        affordable || maxed,
+      );
+      btn.bg.setFillStyle(affordable ? theme.panel : theme.panelDark);
+      btn.label.setColor(maxed ? theme.accentText : affordable ? theme.accentText : colorHex(theme.mid));
+      btn.label.setText(maxed ? 'TURRET MAX' : p.turret.rank === 0 ? 'TURRET' : `TURRET ${p.turret.rank + 1}`);
+      btn.cost.setText(maxed ? 'MAX' : `${cost} G`);
+      btn.cost.setColor(maxed ? colorHex(theme.gold) : affordable ? colorHex(theme.gold) : colorHex(theme.edge));
+      btn.icon.setTexture(`icon_turret_${p.age}`);
+      btn.icon.setAlpha(affordable || maxed || p.turret.rank > 0 ? 1 : 0.5);
+      btn.bg.setInteractive({ useHandCursor: affordable });
+      btn.pips.forEach((pip, i) => pip.setFillStyle(i < p.turret.rank ? theme.gold : theme.panelLight));
+    }
+
+    // Ultimate meter: fills with time and kills.
+    {
+      const btn = this.ultBtn;
+      const def = ULT_DEFS[p.age];
+      const full = p.ultCharge >= ULT_MAX;
+      const ratio = Math.max(0, Math.min(1, p.ultCharge / ULT_MAX));
+      this.drawBtnFrame(
+        btn.frame,
+        btn.bg.x - btn.bg.width / 2, btn.bg.y - btn.bg.height / 2,
+        btn.bg.width, btn.bg.height,
+        { ...theme, btnReady: theme.gold, btnLocked: theme.panelDark, borderGlow: theme.gold },
+        full,
+      );
+      btn.icon.setTexture(`icon_ult_${p.age}`);
+      btn.label.setText(def.label.toUpperCase());
+      btn.meter.width = Math.max(0.001, (btn.meterBg.width) * ratio);
+      btn.meter.setFillStyle(full ? theme.gold : theme.accent);
+      btn.bg.setInteractive({ useHandCursor: full });
+      if (full) {
+        btn.pulse += 0.12;
+        const glow = 0.8 + Math.sin(btn.pulse) * 0.2;
+        btn.bg.setAlpha(glow);
+        btn.icon.setAlpha(glow);
+      } else {
+        btn.bg.setAlpha(1);
+        btn.icon.setAlpha(0.55);
+      }
+    }
+
     if (state.result !== 'playing') {
       this.subtitle.setText(state.result === 'win'
         ? 'VICTORY - timeline secured  |  SPACE to play again'
@@ -603,38 +776,137 @@ export class Hud {
     }
   }
 
-  showGameOver(result: 'win' | 'loss'): void {
+  /**
+   * End-of-match results: star rating, clear time, units spawned and enemies
+   * destroyed, plus the two actions that matter (next stage / retry).
+   */
+  showResults(payload: ResultsPayload): void {
     if (this.gameOverGroup) return;
     const s = this.scene;
     const theme = THEMES[this.currentTheme];
+    const win = payload.result === 'win';
     const c = s.add.container(LANE_WIDTH / 2, 250).setDepth(50);
 
-    const bg = s.add.rectangle(0, 0, 560, 220, theme.panelDark, 0.9)
-      .setStrokeStyle(3, result === 'win' ? theme.gold : theme.hpEnemy);
-    const t1 = s.add.text(0, -62, result === 'win' ? 'VICTORY' : 'DEFEAT', {
-      fontFamily: 'monospace', fontSize: '42px',
-      color: colorHex(result === 'win' ? theme.gold : theme.hpEnemy),
+    const bg = s.add.rectangle(0, 0, 600, 258, theme.panelDark, 0.93)
+      .setStrokeStyle(3, win ? theme.gold : theme.hpEnemy);
+    const t1 = s.add.text(0, -92, win ? 'VICTORY' : 'DEFEAT', {
+      fontFamily: 'monospace', fontSize: '40px',
+      color: colorHex(win ? theme.gold : theme.hpEnemy),
       fontStyle: 'bold', stroke: theme.outline, strokeThickness: 6,
     }).setOrigin(0.5);
-    const decoKey = `ui_${result === 'win' ? 'victory' : 'defeat'}_${this.currentTheme}`;
+
+    // Stars: filled for earned, dim for still to come.
+    const stars: Phaser.GameObjects.GameObject[] = [];
+    for (let i = 0; i < 3; i++) {
+      const earned = i < payload.stars;
+      const x = -40 + i * 40;
+      const star = s.add.text(x, -46, earned ? '★' : '☆', {
+        fontFamily: 'monospace', fontSize: '30px',
+        color: earned ? '#f4c85b' : colorHex(theme.mid),
+        stroke: theme.outline, strokeThickness: 4,
+      }).setOrigin(0.5);
+      stars.push(star);
+      if (earned) {
+        star.setScale(0.4);
+        s.tweens.add({
+          targets: star,
+          scaleX: 1, scaleY: 1,
+          delay: 260 + i * 180,
+          duration: 320,
+          ease: 'Back.easeOut',
+        });
+      }
+    }
+
+    const decoKey = `ui_${win ? 'victory' : 'defeat'}_${this.currentTheme}`;
     if (s.textures.exists(decoKey)) {
-      const img = s.add.image(0, 6, decoKey).setOrigin(0.5).setScale(PIXEL_SCALE);
+      const img = s.add.image(0, -6, decoKey).setOrigin(0.5).setScale(PIXEL_SCALE * 0.8).setAlpha(0.9);
       c.add(img);
     }
-    const t2 = s.add.text(0, 48, result === 'win' ? 'You erased the enemy timeline.' : 'The enemy erased yours.', {
-      fontFamily: 'monospace', fontSize: '16px', color: theme.accentText,
-      stroke: theme.outline, strokeThickness: 4,
-    }).setOrigin(0.5);
-    const t3 = s.add.text(0, 78, 'Press SPACE or click to play again', {
-      fontFamily: 'monospace', fontSize: '14px', color: colorHex(theme.body),
+
+    const mm = Math.floor(payload.elapsedMs / 60000);
+    const ss = Math.floor((payload.elapsedMs % 60000) / 1000).toString().padStart(2, '0');
+    const rows = [
+      ['CLEAR TIME', `${mm}:${ss}${payload.isBest ? '  (BEST)' : ''}`],
+      ['UNITS SPAWNED', `${payload.unitsSpawned}`],
+      ['ENEMIES DESTROYED', `${payload.enemiesDestroyed}`],
+      ['UNITS LOST', `${payload.unitsLost}`],
+      ['BASE INTEGRITY', `${Math.round(payload.baseHpRatio * 100)}%`],
+    ];
+    const rowObjs: Phaser.GameObjects.GameObject[] = [];
+    rows.forEach(([label, value], i) => {
+      const y = 6 + i * 19;
+      rowObjs.push(s.add.text(-262, y, label, {
+        fontFamily: 'monospace', fontSize: '13px', color: colorHex(theme.mid),
+        stroke: theme.outline, strokeThickness: 3,
+      }).setOrigin(0, 0.5));
+      rowObjs.push(s.add.text(262, y, value, {
+        fontFamily: 'monospace', fontSize: '13px', color: theme.accentText, fontStyle: 'bold',
+        stroke: theme.outline, strokeThickness: 3,
+      }).setOrigin(1, 0.5));
+    });
+
+    const mkBtn = (x: number, text: string, primary: boolean, onClick: () => void) => {
+      const btnBg = s.add.rectangle(x, 96, 168, 38, primary ? theme.panel : theme.panelDark, 1)
+        .setStrokeStyle(2, primary ? theme.gold : theme.edge)
+        .setInteractive({ useHandCursor: true });
+      const label = s.add.text(x, 96, text, {
+        fontFamily: 'monospace', fontSize: '15px',
+        color: primary ? theme.accentText : colorHex(theme.body),
+        fontStyle: 'bold', stroke: theme.outline, strokeThickness: 4,
+      }).setOrigin(0.5);
+      btnBg.on('pointerdown', onClick);
+      btnBg.on('pointerover', () => btnBg.setFillStyle(primary ? theme.panelLight : theme.panel));
+      btnBg.on('pointerout', () => btnBg.setFillStyle(primary ? theme.panel : theme.panelDark));
+      return [btnBg, label];
+    };
+
+    const buttons: Phaser.GameObjects.GameObject[] = [];
+    if (payload.hasNextStage && win) {
+      buttons.push(...mkBtn(-90, 'NEXT LEVEL', true, () => this.onNextStageRequest?.()));
+      buttons.push(...mkBtn(90, 'RETRY', false, () => this.onRestartRequest?.()));
+    } else if (win) {
+      // Final stage cleared, or an endless run won.
+      buttons.push(...mkBtn(-90, 'PLAY AGAIN', true, () => this.onRestartRequest?.()));
+      buttons.push(...mkBtn(90, 'STAGE MAP', false, () => this.onMenuRequest?.()));
+    } else {
+      buttons.push(...mkBtn(0, 'RETRY', true, () => this.onRestartRequest?.()));
+    }
+    const hint = s.add.text(0, 126, win ? 'Press ENTER for the next level' : 'Press ENTER to retry', {
+      fontFamily: 'monospace', fontSize: '11px', color: colorHex(theme.body),
       stroke: theme.outline, strokeThickness: 3,
     }).setOrigin(0.5);
-    c.add([bg, t1, t2, t3]);
+
+    c.add([bg, t1, ...stars, ...rowObjs, ...buttons, hint]);
     this.gameOverGroup = c;
-    bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerdown', () => this.onRestartRequest?.());
     c.setScale(0.6).setAlpha(0);
     s.tweens.add({ targets: c, scaleX: 1, scaleY: 1, alpha: 1, duration: 350, ease: 'Back.easeOut' });
+  }
+
+  /** Compact banner used by the campaign for stage titles. */
+  announce(text: string, sub = '', ms = 2200): void {
+    const s = this.scene;
+    const theme = THEMES[this.currentTheme];
+    const c = s.add.container(LANE_WIDTH / 2, 168).setDepth(45);
+    const banner = s.add.rectangle(0, 0, 520, sub ? 68 : 46, theme.banner, 0.9)
+      .setStrokeStyle(2, theme.borderGlow);
+    const title = s.add.text(0, sub ? -12 : 0, text, {
+      fontFamily: 'monospace', fontSize: '24px', color: theme.accentText,
+      fontStyle: 'bold', stroke: theme.outline, strokeThickness: 5,
+    }).setOrigin(0.5);
+    c.add([banner, title]);
+    if (sub) {
+      c.add(s.add.text(0, 16, sub, {
+        fontFamily: 'monospace', fontSize: '13px', color: colorHex(theme.body),
+        stroke: theme.outline, strokeThickness: 3,
+      }).setOrigin(0.5));
+    }
+    c.setAlpha(0).setScale(0.85);
+    s.tweens.add({ targets: c, alpha: 1, scaleX: 1, scaleY: 1, duration: 220, ease: 'Back.easeOut' });
+    s.tweens.add({
+      targets: c, alpha: 0, delay: ms, duration: 300,
+      onComplete: () => c.destroy(),
+    });
   }
 
   resetGameOver(): void {
