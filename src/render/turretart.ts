@@ -17,6 +17,14 @@ export interface TurretCanvas {
 /** Turrets are drawn to match the tower scale, not the unit scale. */
 export const TURRET_CANVAS: TurretCanvas = { w: 44, h: 34, foot: 32 };
 
+/**
+ * Where each age's turret stands on its tower, in screen px below the roof
+ * line: on the stone watch platform, on the keep's wall-walk, on the bunker's
+ * blockhouse roof. Keeps the emplacement planted on the architecture instead
+ * of floating at a hand-picked lane offset.
+ */
+export const TURRET_SILL: Record<Age, number> = { stone: 84, medieval: 88, modern: 70 };
+
 export function turretKey(age: Age | string, side: 'player' | 'ai' = 'player'): string {
   return `turret_${age}_${side}`;
 }

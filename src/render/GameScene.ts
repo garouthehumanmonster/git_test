@@ -27,7 +27,7 @@ import {
   tick,
 } from '../sim/sim';
 import { type ResultsPayload, baseHpRatio, recordResult, stageById, starRating, STAGES } from '../campaign';
-import { FX_ORIGIN, TURRET_FIT, turretKey } from './turretart';
+import { FX_ORIGIN, TURRET_FIT, TURRET_SILL, turretKey } from './turretart';
 import { Hud } from './Hud';
 import { UNIT_FIT, unitKey } from './unitart';
 import { baseKey } from './basearth';
@@ -44,8 +44,6 @@ import {
 } from '../crazygames';
 
 // ---- Presentation constants ---------------------------------------------
-/** On-screen tower height (authored 78px canvas at PIXEL_SCALE). */
-const BASE_H = 156;
 /** How high above the foot line projectiles fly, so arrows leave the bow. */
 const MUZZLE_LIFT = 20;
 /** Extra vertical spread so a stacked front line reads as a crowd, not a blob. */
@@ -376,6 +374,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Screen row of the tower roof line, from the live base image. */
+  private towerTopY(side: 'player' | 'ai'): number {
+    const img = side === 'player' ? this.playerBase : this.aiBase;
+    return img.y - img.displayHeight;
+  }
+
   /** Base tower image: authored canvas displayed at exactly PIXEL_SCALE. */
   private makeBase(side: 'player' | 'ai'): Phaser.GameObjects.Image {
     const age = side === 'player' ? this.sim.player.age : this.sim.ai.age;
@@ -389,14 +393,16 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Base-defence turret. Hidden until bought, then swapped to the age's
-   * silhouette on evolution and tilted up as its rank rises.
+   * silhouette on evolution and tilted up as its rank rises. Planted on the
+   * tower itself — watch platform, wall-walk or blockhouse roof — at the age's
+   * sill height, so the emplacement is part of the tower's architecture.
    */
   private makeTurret(side: 'player' | 'ai'): Phaser.GameObjects.Image {
     const age = side === 'player' ? this.sim.player.age : this.sim.ai.age;
-    const x = side === 'player' ? PLAYER_BASE_X + 26 : AI_BASE_X - 26;
-    const y = laneGroundY(x) - 6;
+    const x = side === 'player' ? PLAYER_BASE_X + 14 : AI_BASE_X - 14;
+    const y = this.towerTopY(side) + TURRET_SILL[age];
     const img = this.add.image(x, y, turretKey(age, side))
-      .setOrigin(0.5, 0.9)
+      .setOrigin(0.5, 1)
       .setScale(PIXEL_SCALE)
       .setDepth(DEPTH.turret)
       .setVisible(false);
@@ -426,14 +432,14 @@ export class GameScene extends Phaser.Scene {
     // Lean toward whatever it is tracking, and kick back when it fires.
     const target = p.turret.targetId;
     const enemy = target != null ? this.sim.units.find((u) => u.id === target) : undefined;
-    const restX = side === 'player' ? PLAYER_BASE_X + 26 : AI_BASE_X - 26;
+    const restX = side === 'player' ? PLAYER_BASE_X + 14 : AI_BASE_X - 14;
     const aim = enemy ? Phaser.Math.Clamp((enemy.x - restX) * 0.4, -26, 26) : 0;
     if (this.turretKick[side] !== 0) {
       this.turretKick[side] *= 0.7;
       if (Math.abs(this.turretKick[side]) < 0.05) this.turretKick[side] = 0;
     }
     img.x = restX + aim * 0.12 - this.turretKick[side] * (side === 'player' ? 1 : -1);
-    img.y = laneGroundY(img.x) - 6;
+    img.y = this.towerTopY(side) + TURRET_SILL[p.age];
   }
 
   private announceStageIntro(playerAge: string, aiAge: string): void {
@@ -492,10 +498,10 @@ export class GameScene extends Phaser.Scene {
 
   private makeFlag(side: 'player' | 'ai'): Phaser.GameObjects.Image {
     const age = this.sim.player.age;
-    const x = side === 'player' ? PLAYER_BASE_X + 30 : AI_BASE_X - 30;
-    const y = LANE_TOP + 12;
+    const x = side === 'player' ? PLAYER_BASE_X + 10 : AI_BASE_X - 10;
+    const y = this.towerTopY(side) - 2;
     const img = this.add.image(x, y, `flag_${age}_${side}`)
-      .setOrigin(side === 'player' ? 0 : 1, 0.5)
+      .setOrigin(side === 'player' ? 0 : 1, 1)
       .setScale(PIXEL_SCALE)
       .setDepth(3.6);
     if (side === 'ai') img.setFlipX(true);
@@ -506,7 +512,8 @@ export class GameScene extends Phaser.Scene {
     const pal = paletteFor(this.sim.player.age);
     const barW = 96;
     const barH = 8;
-    const y = LANE_TOP + 66;
+    // Boss-bar style: floating just above the roof line, clear of the turret.
+    const y = this.towerTopY('player') - 12;
     this.add.rectangle(PLAYER_BASE_X, y, barW + 4, barH + 4, pal.dark, 0.92)
       .setOrigin(0.5).setDepth(3.4).setStrokeStyle(1, pal.edge);
     this.add.rectangle(PLAYER_BASE_X, y, barW, barH, pal.panel, 1).setOrigin(0.5).setDepth(3.5);
@@ -1270,9 +1277,11 @@ export class GameScene extends Phaser.Scene {
     if (this.aiBaseFlash > 0) { this.aiBase.x = AI_BASE_X + (Math.random() * 4 - 2); this.aiBaseFlash--; }
     else this.aiBase.x = AI_BASE_X;
 
-    this.playerFlag.x = this.playerBase.x + 30;
-    this.aiFlag.x = this.aiBase.x - 30;
+    this.playerFlag.x = this.playerBase.x + 10;
+    this.aiFlag.x = this.aiBase.x - 10;
+    this.playerFlag.y = this.playerBase.y - this.playerBase.displayHeight - 2;
+    this.aiFlag.y = this.aiBase.y - this.aiBase.displayHeight - 2;
   }
 }
 
-export { BASE_H, LANE_WIDTH };
+export { LANE_WIDTH };

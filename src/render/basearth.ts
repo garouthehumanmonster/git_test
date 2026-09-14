@@ -4,83 +4,99 @@ import { fitSprite, r, tri, type FittedSprite, type SpriteOp } from './spriteops
 /**
  * Base towers, one per age and side.
  *
- * Authored at 46x62 and displayed at PIXEL_SCALE (92x124) — deliberately about
- * two and a half units tall, so the towers anchor the battlefield without
- * swallowing it. Player and enemy towers share the same architecture and are
- * separated only by their heraldry colour.
+ * Authored at 54x76 and displayed at PIXEL_SCALE (108x152) — the tallest and
+ * widest silhouette on the field by contract (see `test/render/art.test.ts`):
+ * a tower is ~2.7x a human unit and just over 2x a war beast, so the base
+ * always anchors the battlefield instead of being dwarfed by the units it
+ * spawns. Each tower is a vertical structure — crown, shaft, grounded base —
+ * never a squat hut. Player and enemy towers share architecture and are
+ * separated only by their hanging heraldry.
  */
-export const BASE_CANVAS = { w: 46, h: 62 };
+export const BASE_CANVAS = { w: 54, h: 76 };
 /** Row inside the canvas that touches the ground. */
-export const BASE_FOOT_ROW = 61;
+export const BASE_FOOT_ROW = 75;
 
 const PALISADE: SpriteOp[] = [
-  // palisade wall of sharpened logs
-  r(5, 26, 36, 36, 'edge'),
-  r(6, 28, 3, 34, 'mid'), r(12, 28, 3, 34, 'mid'), r(18, 28, 3, 34, 'mid'),
-  r(24, 28, 3, 34, 'mid'), r(30, 28, 3, 34, 'mid'), r(36, 28, 3, 34, 'mid'),
-  // fighting platform with crenellations
-  r(3, 20, 40, 7, 'body'),
-  r(3, 14, 5, 7, 'body'), r(13, 14, 5, 7, 'body'), r(23, 14, 5, 7, 'body'), r(36, 14, 5, 7, 'body'),
-  r(3, 20, 40, 2, 'body'),
-  // thatched hall roof behind the wall
-  tri(23, 2, 10, 20, 36, 20, 'body'),
-  tri(23, 7, 14, 20, 32, 20, 'body'),
-  r(21, 0, 4, 6, 'edge'),
-  // gate and brazier
-  r(18, 44, 10, 18, 'panel'),
-  tri(18, 44, 28, 44, 23, 38, 'mid'),
-  r(7, 32, 4, 6, 'highlight'),
-  r(8, 30, 2, 2, 'light'),
+  // grounded log wall — the widest mass of the tower
+  r(4, 42, 46, 34, 'edge'),
+  r(8, 44, 3, 31, 'mid'), r(16, 44, 3, 31, 'mid'), r(24, 44, 3, 31, 'mid'),
+  r(32, 44, 3, 31, 'mid'), r(40, 44, 3, 31, 'mid'), r(46, 44, 3, 31, 'mid'),
+  // watch platform on posts
+  r(12, 34, 30, 9, 'body'),
+  r(14, 43, 3, 7, 'mid'), r(24, 43, 3, 7, 'mid'), r(36, 43, 3, 7, 'mid'),
+  // palisade crown above the platform
+  r(12, 26, 30, 9, 'body'),
+  r(12, 22, 5, 5, 'body'), r(20, 22, 5, 5, 'body'), r(28, 22, 5, 5, 'body'), r(37, 22, 5, 5, 'body'),
+  // signal brazier on the platform rail
+  r(6, 29, 4, 3, 'mid'), r(7, 26, 2, 3, 'highlight'), r(7, 25, 2, 1, 'light'),
+  // conical thatched roof over the crown
+  tri(27, 0, 6, 23, 48, 23, 'body'),
+  tri(27, 5, 12, 23, 42, 23, 'edge'),
+  r(26, 0, 2, 6, 'edge'),
+  // gate with a hide awning
+  r(20, 58, 14, 18, 'panel'),
+  tri(20, 58, 34, 58, 27, 48, 'mid'),
+  r(22, 61, 10, 15, 'dark'),
 ];
 
 const KEEP: SpriteOp[] = [
-  // central keep
-  r(10, 22, 26, 40, 'edge'),
-  r(6, 15, 34, 8, 'body'),
-  r(6, 9, 6, 8, 'body'), r(16, 9, 6, 8, 'body'), r(26, 9, 6, 8, 'body'), r(34, 9, 6, 8, 'body'),
-  // flanking towers
-  r(0, 18, 9, 44, 'body'),
-  r(37, 18, 9, 44, 'body'),
-  r(1, 12, 7, 7, 'edge'), r(38, 12, 7, 7, 'edge'),
-  r(2, 13, 2, 5, 'body'), r(6, 13, 2, 5, 'body'),
-  r(38, 13, 2, 5, 'body'), r(42, 13, 2, 5, 'body'),
-  // stonework: arrow slits, lit windows, machicolations
-  r(13, 28, 3, 7, 'panel'), r(22, 28, 3, 7, 'panel'), r(31, 28, 3, 7, 'panel'),
-  r(16, 40, 4, 5, 'light'), r(27, 40, 4, 5, 'light'),
-  r(10, 48, 26, 2, 'mid'),
-  // archway and steps
-  r(18, 48, 10, 14, 'panel'),
-  tri(18, 48, 28, 48, 23, 42, 'edge'),
-  r(14, 55, 18, 2, 'mid'),
+  // curtain wall with dressing
+  r(6, 44, 42, 32, 'edge'),
+  r(10, 46, 3, 29, 'mid'), r(20, 46, 3, 29, 'mid'), r(30, 46, 3, 29, 'mid'), r(40, 46, 3, 29, 'mid'),
+  // wall-walk and crenellations
+  r(6, 40, 42, 5, 'body'),
+  r(6, 36, 5, 5, 'body'), r(14, 36, 5, 5, 'body'), r(22, 36, 5, 5, 'body'),
+  r(30, 36, 5, 5, 'body'), r(39, 36, 5, 5, 'body'), r(46, 36, 5, 5, 'body'),
+  // flanking towers with crowned parapets
+  r(6, 18, 10, 22, 'body'),
+  r(38, 18, 10, 22, 'body'),
+  r(5, 14, 12, 5, 'edge'), r(37, 14, 12, 5, 'edge'),
+  r(6, 10, 3, 5, 'body'), r(11, 10, 3, 5, 'body'),
+  r(38, 10, 3, 5, 'body'), r(43, 10, 3, 5, 'body'),
+  r(9, 22, 3, 6, 'panel'), r(41, 22, 3, 6, 'panel'),
+  // great donjon rising through the middle of the composition
+  r(19, 8, 16, 32, 'edge'),
+  r(21, 10, 3, 29, 'mid'), r(30, 10, 3, 29, 'mid'),
+  r(17, 4, 20, 5, 'body'),
+  r(17, 0, 4, 5, 'body'), r(23, 0, 4, 5, 'body'), r(29, 0, 4, 5, 'body'), r(35, 0, 4, 5, 'body'),
+  r(24, 14, 5, 6, 'light'), r(24, 26, 5, 6, 'panel'),
+  // gatehouse arch and steps
+  r(20, 58, 14, 18, 'panel'),
+  tri(20, 58, 34, 58, 27, 46, 'edge'),
+  r(22, 61, 10, 15, 'dark'),
+  r(14, 73, 26, 3, 'mid'),
 ];
 
 const BUNKER: SpriteOp[] = [
-  // concrete blockhouse
-  r(5, 24, 36, 38, 'mid'),
-  r(3, 18, 40, 8, 'edge'),
-  r(3, 18, 40, 2, 'body'),
-  // armoured turret with a radar mast
-  r(12, 6, 22, 14, 'edge'),
-  r(13, 4, 20, 3, 'body'),
-  r(16, 0, 14, 5, 'body'),
-  r(22, 0, 2, 6, 'light'),
-  r(35, 8, 5, 5, 'body'),
-  // plating, vents, hazard stripe
-  r(7, 28, 13, 6, 'panel'), r(26, 28, 13, 6, 'panel'),
-  r(7, 29, 13, 1, 'body'),
-  r(6, 38, 34, 3, 'light'),
-  r(6, 48, 34, 3, 'panel'),
+  // radar mast with a rotating dish and a warning beacon
+  r(25, 4, 3, 9, 'edge'),
+  r(17, 2, 8, 6, 'body'), r(16, 3, 2, 4, 'light'), r(23, 4, 3, 2, 'light'),
+  r(26, 1, 2, 2, 'highlight'),
+  // control cab with lit windows
+  r(16, 13, 22, 15, 'edge'),
+  r(18, 16, 6, 4, 'light'), r(26, 16, 6, 4, 'light'),
+  r(16, 26, 22, 2, 'body'),
+  // support column
+  r(22, 28, 10, 8, 'mid'),
+  // reinforced blockhouse
+  r(4, 35, 46, 41, 'mid'),
+  r(4, 35, 46, 3, 'edge'),
+  r(8, 40, 3, 31, 'panel'), r(16, 40, 3, 31, 'panel'), r(28, 40, 3, 31, 'panel'),
+  r(38, 40, 3, 31, 'panel'), r(44, 40, 3, 31, 'panel'),
+  r(6, 52, 42, 3, 'light'),
+  r(10, 58, 8, 4, 'edge'), r(34, 58, 8, 4, 'edge'),
   // blast door
-  r(17, 46, 12, 16, 'panel'),
-  r(18, 48, 9, 13, 'mid'),
-  r(20, 53, 2, 2, 'body'),
+  r(21, 60, 12, 16, 'edge'),
+  r(23, 62, 8, 13, 'panel'),
+  r(26, 68, 2, 2, 'body'),
 ];
 
 function withHeraldry(ops: SpriteOp[], side: Side): SpriteOp[] {
-  // Team cloth: a hanging banner in the side's colour.
+  // Team cloth: a hanging banner in the side's colour, mid-tower where it
+  // stays clear of the turret sill and the roofline flag.
   const cloth: SpriteOp[] = side === 'player'
-    ? [r(34, 32, 8, 10, 'team'), tri(34, 42, 42, 42, 38, 47, 'team'), r(36, 34, 4, 2, 'light')]
-    : [r(4, 32, 8, 10, 'team'), tri(4, 42, 12, 42, 8, 47, 'team'), r(6, 34, 4, 2, 'light')];
+    ? [r(41, 28, 8, 12, 'team'), tri(41, 40, 49, 40, 45, 46, 'team'), r(43, 30, 4, 2, 'light')]
+    : [r(5, 28, 8, 12, 'team'), tri(5, 40, 13, 40, 9, 46, 'team'), r(7, 30, 4, 2, 'light')];
   return [...ops, ...cloth];
 }
 

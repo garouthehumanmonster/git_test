@@ -33,8 +33,8 @@ import type { Age } from '../src/sim/types';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Sky band size in authored pixels; drawn at PIXEL_SCALE (2x) => 900x286. */
-export const BACKDROP_W = 450;
+/** Sky band size in authored pixels; drawn at PIXEL_SCALE (2x) => 960x286. */
+export const BACKDROP_W = 480;
 export const BACKDROP_H = 143;
 
 interface AgeRecipe {

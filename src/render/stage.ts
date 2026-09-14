@@ -6,8 +6,8 @@ import { FORE_BOTTOM, SKY_HEIGHT, laneGroundY, paintLane } from './laneart';
 
 export { laneGroundY, FORE_BOTTOM, SKY_HEIGHT };
 
-/** Authored backdrop size; drawn at PIXEL_SCALE so it fills the 900px sky band. */
-export const BACKDROP_W = 450;
+/** Authored backdrop size; drawn at PIXEL_SCALE so it fills the 960px sky band. */
+export const BACKDROP_W = 480;
 export const BACKDROP_H = 143;
 
 interface PropInstance {
