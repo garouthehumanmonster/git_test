@@ -44,7 +44,7 @@ const THEMES: Record<'stone' | 'medieval' | 'modern', Theme> = {
     border: 0x8a5a2c, borderGlow: 0xd9a25e,
     accent: 0xd9a25e, accentText: '#ffe0b0',
     gold: 0xf4c85b, xp: 0xb08354,
-    hpPlayer: 0xd9a25e, hpEnemy: 0x8a5a2c,
+    hpPlayer: 0x2ecc71, hpEnemy: 0xef5350,
     btnReady: 0x8a5a2c, btnLocked: 0x2b1e12,
     evolveBg: 0x4d3720, evolveBorder: 0xd9a25e, evolveGlow: '#ffe0b0',
     banner: 0x2b1e12, outline: '#171009',
@@ -55,7 +55,7 @@ const THEMES: Record<'stone' | 'medieval' | 'modern', Theme> = {
     border: 0x425aa8, borderGlow: 0xffd166,
     accent: 0xffd166, accentText: '#ffe9b0',
     gold: 0xffd166, xp: 0x7a8fcf,
-    hpPlayer: 0x7a8fcf, hpEnemy: 0xd64a4a,
+    hpPlayer: 0x2ecc71, hpEnemy: 0xef5350,
     btnReady: 0x425aa8, btnLocked: 0x161d33,
     evolveBg: 0x2a3660, evolveBorder: 0xffd166, evolveGlow: '#ffe9b0',
     banner: 0x161d33, outline: '#0a0f1f',
@@ -232,16 +232,16 @@ export class Hud {
     // Base health bars (top centre)
     const barW = Hud.BAR_W, barH = Hud.BAR_H;
     this.playerHpFrame = s.add.rectangle(w / 2 - 8, 32, barW + 6, barH + 6, 0x171009, 1)
-      .setOrigin(1, 0.5).setDepth(10).setStrokeStyle(2, 0x8a5a2c);
-    this.playerHpBar = s.add.rectangle(w / 2 - 11, 32, barW, barH, 0xd9a25e).setOrigin(1, 0.5).setDepth(11);
+      .setOrigin(1, 0.5).setDepth(10).setStrokeStyle(2, 0x2ecc71);
+    this.playerHpBar = s.add.rectangle(w / 2 - 11, 32, barW, barH, 0x2ecc71).setOrigin(1, 0.5).setDepth(11);
     this.playerHpText = s.add.text(w / 2 - 8, 48, '', {
       fontFamily: 'monospace', fontSize: '11px', color: '#ffe0b0',
       stroke: '#171009', strokeThickness: 3,
     }).setOrigin(1, 0.5).setDepth(10);
 
     this.aiHpFrame = s.add.rectangle(w / 2 + 8, 32, barW + 6, barH + 6, 0x171009, 1)
-      .setOrigin(0, 0.5).setDepth(10).setStrokeStyle(2, 0x8a5a2c);
-    this.aiHpBar = s.add.rectangle(w / 2 + 11, 32, barW, barH, 0x8a5a2c).setOrigin(0, 0.5).setDepth(11);
+      .setOrigin(0, 0.5).setDepth(10).setStrokeStyle(2, 0xef5350);
+    this.aiHpBar = s.add.rectangle(w / 2 + 11, 32, barW, barH, 0xef5350).setOrigin(0, 0.5).setDepth(11);
     this.aiHpText = s.add.text(w / 2 + 8, 48, '', {
       fontFamily: 'monospace', fontSize: '11px', color: '#ffe0b0',
       stroke: '#171009', strokeThickness: 3,
@@ -413,22 +413,22 @@ export class Hud {
     const accent = s.add.rectangle(x - w / 2 + 3, y - h / 2 + 3, 5, h - 6, 0xffe0b0).setOrigin(0, 0).setDepth(11);
     const bg = s.add.rectangle(x, y, w - 6, h - 6, 0x171009).setOrigin(0.5).setDepth(11).setInteractive({ useHandCursor: true });
 
-    const icon = s.add.image(x - w / 2 + 26, y, `portrait_stone_${role}`)
+    const icon = s.add.image(x - w / 2 + 24, y, `portrait_stone_${role}`)
       .setOrigin(0.5).setScale(PIXEL_SCALE).setDepth(12);
-    const label = s.add.text(x - w / 2 + 48, y - h / 2 + 8, '', {
-      fontFamily: 'monospace', fontSize: '13px', color: '#ffe0b0', fontStyle: 'bold',
+    const label = s.add.text(x - w / 2 + 42, y - h / 2 + 8, '', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#ffe0b0', fontStyle: 'bold',
       stroke: '#171009', strokeThickness: 3,
     }).setOrigin(0, 0).setDepth(12);
-    const cost = s.add.text(x - w / 2 + 48, y - h / 2 + 26, '', {
-      fontFamily: 'monospace', fontSize: '12px', color: '#f4c85b',
+    const cost = s.add.text(x - w / 2 + 42, y - h / 2 + 23, '', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#f4c85b',
       stroke: '#171009', strokeThickness: 3,
     }).setOrigin(0, 0).setDepth(12);
-    const stats = s.add.text(x - w / 2 + 8, y + h / 2 - 20, '', {
-      fontFamily: 'monospace', fontSize: '10px', color: '#b08354',
+    const stats = s.add.text(x - w / 2 + 8, y + h / 2 - 16, '', {
+      fontFamily: 'monospace', fontSize: '9px', color: '#b08354',
       stroke: '#171009', strokeThickness: 2,
     }).setOrigin(0, 0).setDepth(12);
-    const hotkey = s.add.text(x + w / 2 - 12, y - h / 2 + 8, ROLE_HOTKEY[role], {
-      fontFamily: 'monospace', fontSize: '12px', color: '#ffe0b0',
+    const hotkey = s.add.text(x + w / 2 - 7, y - h / 2 + 7, ROLE_HOTKEY[role], {
+      fontFamily: 'monospace', fontSize: '10px', color: '#ffd166', fontStyle: 'bold',
       stroke: '#171009', strokeThickness: 3,
     }).setOrigin(1, 0).setDepth(12);
     const cd = s.add.rectangle(x - w / 2 + 3, y - h / 2 + 3, 0, h - 6, 0x171009, 0.62).setOrigin(0, 0).setDepth(13).setVisible(false);

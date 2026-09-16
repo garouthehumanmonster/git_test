@@ -101,14 +101,30 @@ const HUT: SpriteOp[] = [
 ];
 
 const TOTEM: SpriteOp[] = [
-  r(5, 6, 5, 24, 'edge'),
-  r(3, 0, 9, 8, 'light'),
-  r(5, 2, 2, 2, 'ink'), r(9, 2, 2, 2, 'ink'),
-  r(6, 9, 3, 2, 'panel'),
-  tri(5, 7, 0, 2, 3, 10, 'highlight'),
-  tri(10, 7, 18, 2, 12, 10, 'accent'),
-  r(4, 16, 8, 2, 'body'),
-  r(4, 22, 8, 2, 'body'),
+  // central carved timber post
+  r(6, 2, 6, 26, 'body'),
+  r(10, 2, 2, 26, 'edge'),
+  // horn crest / antler crown
+  tri(9, 0, 3, 4, 15, 4, 'edge'),
+  r(3, 1, 2, 4, 'accent'), r(13, 1, 2, 4, 'accent'),
+  // carved spirit mask (upper effigy)
+  r(5, 4, 8, 8, 'edge'),
+  r(6, 5, 6, 6, 'body'),
+  r(7, 6, 1, 2, 'dark'), r(10, 6, 1, 2, 'dark'),
+  r(8, 9, 2, 1, 'panel'),
+  r(5, 11, 8, 2, 'mid'),
+  // crossbar with hung feathers / pelts
+  r(2, 13, 14, 2, 'accent'),
+  tri(2, 13, 0, 18, 3, 18, 'highlight'),
+  tri(16, 13, 18, 18, 15, 18, 'highlight'),
+  // lower carved mask & cord wrap
+  r(6, 14, 6, 5, 'body'),
+  r(7, 16, 1, 1, 'dark'), r(10, 16, 1, 1, 'dark'),
+  r(5, 19, 8, 2, 'panel'),
+  r(5, 23, 8, 2, 'panel'),
+  // stone cairn footing
+  r(4, 27, 10, 3, 'mid'),
+  r(5, 28, 8, 2, 'dark'),
 ];
 
 const CAMPFIRE: SpriteOp[] = [
@@ -136,11 +152,21 @@ const FERN: SpriteOp[] = [
 ];
 
 const BONES: SpriteOp[] = [
-  r(0, 7, 8, 2, 'light'),
-  r(8, 4, 7, 5, 'light'),
-  r(10, 5, 1, 1, 'ink'), r(12, 5, 1, 1, 'ink'),
-  r(15, 8, 5, 2, 'light'),
-  r(9, 9, 4, 1, 'panel'),
+  // half-buried mammoth skull & curved tusks cairn
+  r(2, 7, 16, 3, 'mid'),
+  r(4, 8, 12, 2, 'panel'),
+  // curved tusks
+  r(1, 3, 2, 4, 'light'), tri(1, 3, 0, 1, 3, 3, 'light'), r(3, 5, 3, 2, 'light'),
+  r(17, 3, 2, 4, 'light'), tri(17, 3, 20, 1, 17, 3, 'light'), r(14, 5, 3, 2, 'light'),
+  // weathered skull dome & eye sockets
+  r(7, 2, 6, 5, 'light'),
+  r(8, 2, 4, 1, 'highlight'),
+  r(6, 4, 8, 3, 'light'),
+  r(8, 4, 1, 2, 'dark'), r(11, 4, 1, 2, 'dark'),
+  r(9, 6, 2, 2, 'edge'),
+  r(8, 8, 4, 2, 'mid'),
+  // rib bones
+  r(4, 5, 1, 3, 'light'), r(15, 5, 1, 3, 'light'),
 ];
 
 const WATCH_POST: SpriteOp[] = [

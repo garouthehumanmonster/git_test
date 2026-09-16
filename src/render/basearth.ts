@@ -17,78 +17,123 @@ export const BASE_CANVAS = { w: 54, h: 76 };
 export const BASE_FOOT_ROW = 75;
 
 const PALISADE: SpriteOp[] = [
-  // grounded log wall — the widest mass of the tower
-  r(4, 42, 46, 34, 'edge'),
-  r(8, 44, 3, 31, 'mid'), r(16, 44, 3, 31, 'mid'), r(24, 44, 3, 31, 'mid'),
-  r(32, 44, 3, 31, 'mid'), r(40, 44, 3, 31, 'mid'), r(46, 44, 3, 31, 'mid'),
-  // watch platform on posts
-  r(12, 34, 30, 9, 'body'),
-  r(14, 43, 3, 7, 'mid'), r(24, 43, 3, 7, 'mid'), r(36, 43, 3, 7, 'mid'),
-  // palisade crown above the platform
-  r(12, 26, 30, 9, 'body'),
-  r(12, 22, 5, 5, 'body'), r(20, 22, 5, 5, 'body'), r(28, 22, 5, 5, 'body'), r(37, 22, 5, 5, 'body'),
-  // signal brazier on the platform rail
-  r(6, 29, 4, 3, 'mid'), r(7, 26, 2, 3, 'highlight'), r(7, 25, 2, 1, 'light'),
-  // conical thatched roof over the crown
-  tri(27, 0, 6, 23, 48, 23, 'body'),
-  tri(27, 5, 12, 23, 42, 23, 'edge'),
-  r(26, 0, 2, 6, 'edge'),
-  // gate with a hide awning
-  r(20, 58, 14, 18, 'panel'),
-  tri(20, 58, 34, 58, 27, 48, 'mid'),
-  r(22, 61, 10, 15, 'dark'),
+  // boulder/stone plinth foundation anchoring the base
+  r(3, 69, 48, 6, 'panel'),
+  r(2, 72, 50, 4, 'dark'),
+  r(4, 70, 7, 3, 'body'), r(13, 70, 6, 3, 'body'), r(21, 70, 6, 3, 'body'),
+  r(29, 70, 6, 3, 'body'), r(37, 70, 6, 3, 'body'), r(45, 70, 5, 3, 'body'),
+  // grounded defensive log wall
+  r(4, 40, 46, 30, 'edge'),
+  // sharpened palisade stake tops along the wall crest
+  tri(6, 38, 4, 41, 8, 41, 'body'), tri(12, 37, 10, 41, 14, 41, 'body'),
+  tri(18, 38, 16, 41, 20, 41, 'body'), tri(34, 38, 32, 41, 36, 41, 'body'),
+  tri(40, 37, 38, 41, 42, 41, 'body'), tri(46, 38, 44, 41, 48, 41, 'body'),
+  // vertical log planking with shadow and sunlit grain
+  r(7, 41, 3, 28, 'mid'), r(10, 41, 1, 28, 'body'),
+  r(15, 41, 3, 28, 'mid'), r(18, 41, 1, 28, 'body'),
+  r(35, 41, 3, 28, 'mid'), r(38, 41, 1, 28, 'body'),
+  r(43, 41, 3, 28, 'mid'), r(46, 41, 1, 28, 'body'),
+  // heavy cross-timber bracing beams with forged iron/leather pins
+  r(4, 48, 46, 3, 'panel'), r(4, 49, 46, 1, 'body'),
+  r(4, 62, 46, 3, 'panel'), r(4, 63, 46, 1, 'body'),
+  r(8, 48, 2, 3, 'dark'), r(16, 48, 2, 3, 'dark'), r(36, 48, 2, 3, 'dark'), r(44, 48, 2, 3, 'dark'),
+  // reinforced gate with heavy timber lintel & skull trophy
+  r(19, 53, 16, 22, 'panel'),
+  tri(27, 49, 21, 54, 33, 54, 'light'), tri(27, 51, 23, 54, 31, 54, 'dark'),
+  r(21, 57, 12, 18, 'dark'),
+  r(22, 59, 4, 15, 'panel'), r(28, 59, 4, 15, 'panel'),
+  r(23, 61, 2, 13, 'mid'), r(29, 61, 2, 13, 'mid'),
+  // watch platform on corbel posts
+  tri(14, 35, 12, 40, 16, 40, 'mid'), tri(27, 35, 25, 40, 29, 40, 'mid'), tri(40, 35, 38, 40, 42, 40, 'mid'),
+  r(10, 32, 34, 5, 'panel'), r(10, 32, 34, 2, 'body'),
+  // upper palisade parapet with notched battlements
+  r(12, 23, 30, 9, 'edge'),
+  r(12, 20, 5, 4, 'body'), r(20, 20, 5, 4, 'body'), r(29, 20, 5, 4, 'body'), r(37, 20, 5, 4, 'body'),
+  tri(14, 18, 12, 21, 16, 21, 'body'), tri(22, 18, 20, 21, 24, 21, 'body'),
+  tri(31, 18, 29, 21, 33, 21, 'body'), tri(39, 18, 37, 21, 41, 21, 'body'),
+  // war brazier on platform rail with active flame
+  r(6, 26, 5, 4, 'panel'), r(7, 27, 3, 2, 'dark'),
+  r(7, 23, 3, 4, 'highlight'), r(8, 22, 1, 2, 'light'),
+  // conical thatched straw roof with layered eaves
+  tri(27, 0, 4, 21, 50, 21, 'body'),
+  tri(27, 4, 8, 21, 46, 21, 'edge'),
+  tri(27, 7, 13, 21, 41, 21, 'body'),
+  r(26, 0, 2, 7, 'edge'),
+  tri(27, 0, 24, 4, 27, 5, 'accent'),
+  r(8, 20, 38, 2, 'panel'),
 ];
 
 const KEEP: SpriteOp[] = [
-  // curtain wall with dressing
-  r(6, 44, 42, 32, 'edge'),
-  r(10, 46, 3, 29, 'mid'), r(20, 46, 3, 29, 'mid'), r(30, 46, 3, 29, 'mid'), r(40, 46, 3, 29, 'mid'),
-  // wall-walk and crenellations
-  r(6, 40, 42, 5, 'body'),
-  r(6, 36, 5, 5, 'body'), r(14, 36, 5, 5, 'body'), r(22, 36, 5, 5, 'body'),
-  r(30, 36, 5, 5, 'body'), r(39, 36, 5, 5, 'body'), r(46, 36, 5, 5, 'body'),
-  // flanking towers with crowned parapets
-  r(6, 18, 10, 22, 'body'),
-  r(38, 18, 10, 22, 'body'),
-  r(5, 14, 12, 5, 'edge'), r(37, 14, 12, 5, 'edge'),
-  r(6, 10, 3, 5, 'body'), r(11, 10, 3, 5, 'body'),
-  r(38, 10, 3, 5, 'body'), r(43, 10, 3, 5, 'body'),
-  r(9, 22, 3, 6, 'panel'), r(41, 22, 3, 6, 'panel'),
-  // great donjon rising through the middle of the composition
-  r(19, 8, 16, 32, 'edge'),
-  r(21, 10, 3, 29, 'mid'), r(30, 10, 3, 29, 'mid'),
-  r(17, 4, 20, 5, 'body'),
-  r(17, 0, 4, 5, 'body'), r(23, 0, 4, 5, 'body'), r(29, 0, 4, 5, 'body'), r(35, 0, 4, 5, 'body'),
-  r(24, 14, 5, 6, 'light'), r(24, 26, 5, 6, 'panel'),
-  // gatehouse arch and steps
-  r(20, 58, 14, 18, 'panel'),
-  tri(20, 58, 34, 58, 27, 46, 'edge'),
-  r(22, 61, 10, 15, 'dark'),
-  r(14, 73, 26, 3, 'mid'),
+  // stone plinth foundation
+  r(3, 72, 48, 4, 'dark'),
+  r(5, 69, 44, 4, 'panel'),
+  tri(5, 68, 2, 72, 5, 72, 'mid'), tri(49, 68, 49, 72, 52, 72, 'mid'),
+  // curtain wall with ashlar masonry courses
+  r(6, 42, 42, 28, 'edge'),
+  r(6, 49, 42, 1, 'dark'), r(6, 56, 42, 1, 'dark'), r(6, 63, 42, 1, 'dark'),
+  r(14, 43, 1, 6, 'dark'), r(26, 43, 1, 6, 'dark'), r(38, 43, 1, 6, 'dark'),
+  r(10, 50, 1, 6, 'dark'), r(22, 50, 1, 6, 'dark'), r(34, 50, 1, 6, 'dark'), r(44, 50, 1, 6, 'dark'),
+  r(16, 57, 1, 6, 'dark'), r(30, 57, 1, 6, 'dark'), r(40, 57, 1, 6, 'dark'),
+  r(7, 43, 6, 1, 'body'), r(19, 43, 6, 1, 'body'), r(31, 43, 6, 1, 'body'),
+  r(11, 50, 6, 1, 'body'), r(23, 50, 6, 1, 'body'), r(35, 50, 6, 1, 'body'),
+  // wall-walk machicolation and crenellations
+  r(5, 38, 44, 4, 'panel'), r(5, 38, 44, 1, 'body'),
+  r(7, 40, 3, 3, 'mid'), r(15, 40, 3, 3, 'mid'), r(23, 40, 3, 3, 'mid'),
+  r(31, 40, 3, 3, 'mid'), r(39, 40, 3, 3, 'mid'), r(45, 40, 3, 3, 'mid'),
+  r(5, 33, 5, 5, 'body'), r(13, 33, 5, 5, 'body'), r(21, 33, 5, 5, 'body'),
+  r(29, 33, 5, 5, 'body'), r(37, 33, 5, 5, 'body'), r(45, 33, 5, 5, 'body'),
+  // flanking towers with arrow slits
+  r(5, 15, 11, 20, 'body'), r(13, 15, 3, 20, 'edge'), r(9, 21, 2, 6, 'dark'),
+  r(38, 15, 11, 20, 'body'), r(46, 15, 3, 20, 'edge'), r(42, 21, 2, 6, 'dark'),
+  r(4, 12, 13, 3, 'edge'), r(37, 12, 13, 3, 'edge'),
+  r(4, 8, 3, 4, 'body'), r(9, 8, 3, 4, 'body'), r(14, 8, 3, 4, 'body'),
+  r(37, 8, 3, 4, 'body'), r(42, 8, 3, 4, 'body'), r(47, 8, 3, 4, 'body'),
+  // great central donjon keep
+  r(18, 5, 18, 34, 'edge'), r(19, 6, 16, 32, 'body'),
+  r(16, 3, 22, 3, 'panel'), r(16, 3, 22, 1, 'highlight'),
+  r(16, 0, 4, 3, 'body'), r(22, 0, 4, 3, 'body'), r(28, 0, 4, 3, 'body'), r(34, 0, 4, 3, 'body'),
+  // donjon arched window
+  r(23, 11, 8, 10, 'dark'), tri(27, 8, 23, 11, 30, 11, 'dark'),
+  r(24, 12, 6, 8, 'light'), r(26, 12, 2, 8, 'edge'), r(24, 15, 6, 1, 'edge'),
+  // portcullis gatehouse & steps
+  r(19, 56, 16, 17, 'panel'),
+  tri(27, 50, 19, 56, 34, 56, 'mid'),
+  r(22, 59, 10, 14, 'dark'),
+  r(24, 60, 1, 13, 'edge'), r(27, 60, 1, 13, 'edge'), r(30, 60, 1, 13, 'edge'),
+  r(16, 73, 22, 3, 'mid'),
 ];
 
 const BUNKER: SpriteOp[] = [
-  // radar mast with a rotating dish and a warning beacon
-  r(25, 4, 3, 9, 'edge'),
-  r(17, 2, 8, 6, 'body'), r(16, 3, 2, 4, 'light'), r(23, 4, 3, 2, 'light'),
-  r(26, 1, 2, 2, 'highlight'),
-  // control cab with lit windows
-  r(16, 13, 22, 15, 'edge'),
-  r(18, 16, 6, 4, 'light'), r(26, 16, 6, 4, 'light'),
-  r(16, 26, 22, 2, 'body'),
-  // support column
-  r(22, 28, 10, 8, 'mid'),
-  // reinforced blockhouse
-  r(4, 35, 46, 41, 'mid'),
-  r(4, 35, 46, 3, 'edge'),
-  r(8, 40, 3, 31, 'panel'), r(16, 40, 3, 31, 'panel'), r(28, 40, 3, 31, 'panel'),
-  r(38, 40, 3, 31, 'panel'), r(44, 40, 3, 31, 'panel'),
-  r(6, 52, 42, 3, 'light'),
-  r(10, 58, 8, 4, 'edge'), r(34, 58, 8, 4, 'edge'),
-  // blast door
-  r(21, 60, 12, 16, 'edge'),
-  r(23, 62, 8, 13, 'panel'),
-  r(26, 68, 2, 2, 'body'),
+  // heavy blast foundation
+  r(2, 71, 50, 5, 'dark'),
+  r(3, 72, 48, 3, 'mid'),
+  // reinforced composite blockhouse
+  r(4, 34, 46, 38, 'mid'),
+  r(4, 34, 46, 3, 'edge'), r(4, 34, 46, 1, 'light'),
+  // armored vertical seams & recessed expansion joints
+  r(14, 37, 2, 34, 'dark'), r(27, 37, 2, 22, 'dark'), r(40, 37, 2, 34, 'dark'),
+  // industrial hazard warning band
+  r(6, 49, 42, 3, 'light'),
+  r(10, 49, 3, 3, 'dark'), r(20, 49, 3, 3, 'dark'), r(30, 49, 3, 3, 'dark'), r(40, 49, 3, 3, 'dark'),
+  // fortified embrasures & corner rivets
+  r(8, 42, 5, 2, 'dark'), r(41, 42, 5, 2, 'dark'),
+  r(6, 37, 2, 2, 'light'), r(6, 65, 2, 2, 'light'),
+  r(46, 37, 2, 2, 'light'), r(46, 65, 2, 2, 'light'),
+  // heavy pneumatic blast door
+  r(20, 58, 14, 15, 'edge'), r(21, 59, 12, 13, 'dark'),
+  r(22, 60, 10, 11, 'panel'),
+  r(26, 64, 2, 2, 'highlight'),
+  // command observation deck on pylons
+  r(18, 26, 4, 8, 'dark'), r(32, 26, 4, 8, 'dark'),
+  r(12, 12, 30, 15, 'edge'), r(13, 13, 28, 13, 'mid'),
+  // narrow panoramic ballistic visor
+  r(16, 16, 22, 5, 'dark'),
+  r(17, 17, 9, 3, 'body'), r(28, 17, 9, 3, 'body'),
+  r(18, 17, 3, 1, 'light'), r(29, 17, 3, 1, 'light'),
+  // radar array & communications mast
+  r(26, 3, 2, 9, 'edge'),
+  r(18, 2, 7, 5, 'body'), r(17, 3, 2, 3, 'light'), tri(22, 1, 18, 4, 24, 4, 'edge'),
+  r(26, 0, 2, 3, 'highlight'), r(26, 1, 2, 1, 'light'),
 ];
 
 function withHeraldry(ops: SpriteOp[], side: Side): SpriteOp[] {
