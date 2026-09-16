@@ -54,9 +54,15 @@ class VoiceAnnouncer {
     }
   }
 
+  private voiceMuted = false;
+
+  setVoiceMuted(m: boolean): void { this.voiceMuted = m; }
+  toggleVoice(): boolean { this.voiceMuted = !this.voiceMuted; return this.voiceMuted; }
+  isMuted(): boolean { return this.voiceMuted || audio.isMuted(); }
+
   play(line: VoiceLine, minIntervalMs = 3500): void {
     if (typeof window === 'undefined') return;
-    if (audio.isMuted()) return;
+    if (this.isMuted()) return;
 
     const now = performance.now();
     const last = this.lastSpoken.get(line) ?? 0;

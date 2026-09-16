@@ -138,6 +138,8 @@ export class GameScene extends Phaser.Scene {
   private playerTurret!: Phaser.GameObjects.Image;
   private aiTurret!: Phaser.GameObjects.Image;
   private turretRank = { player: 0, ai: 0 };
+  private ghostPreview: Phaser.GameObjects.Image | null = null;
+  private ghostTimer: ReturnType<typeof setTimeout> | null = null;
   /** Recoil offset in px, decaying, applied on top of the turret's rest pose. */
   private turretKick = { player: 0, ai: 0 };
   private strikeLayer!: Phaser.GameObjects.Container;
@@ -251,6 +253,40 @@ export class GameScene extends Phaser.Scene {
     // HUD
     this.hud = new Hud(this);
     this.hud.onSpawnRequest = (role) => this.trySpawn('player', role);
+    this.hud.onSpawnHover = (role) => {
+      if (this.ghostTimer) {
+        clearTimeout(this.ghostTimer);
+        this.ghostTimer = null;
+      }
+      if (!role || this.sim.result !== 'playing') {
+        if (this.ghostPreview) {
+          this.ghostPreview.destroy();
+          this.ghostPreview = null;
+        }
+        return;
+      }
+      this.ghostTimer = setTimeout(() => {
+        if (!this.scene.isActive() || this.sim.result !== 'playing') return;
+        if (this.ghostPreview) this.ghostPreview.destroy();
+        const spawnX = PLAYER_BASE_X + 46;
+        const groundY = laneGroundY(spawnX);
+        const key = unitKey(this.sim.player.age, role, 'player');
+        const fit = UNIT_FIT[this.sim.player.age][role];
+        this.ghostPreview = this.add.image(spawnX, groundY, key)
+          .setOrigin(0.5, fit.foot / fit.h)
+          .setScale(PIXEL_SCALE)
+          .setDepth(DEPTH.unit - 0.2)
+          .setAlpha(0.48)
+          .setTint(0x53b6ff);
+        this.tweens.add({
+          targets: this.ghostPreview,
+          alpha: { from: 0.3, to: 0.65 },
+          duration: 480,
+          yoyo: true,
+          repeat: -1,
+        });
+      }, 1000);
+    };
     this.hud.onEvolveRequest = () => this.tryEvolve('player');
     this.hud.onUpgradeForge = () => this.tryUpgrade('forge');
     this.hud.onUpgradeArmor = () => this.tryUpgrade('armor');
@@ -312,7 +348,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
-      const mKey = () => { this.hud.setMusic(!audio.toggleMute()); };
+      const handleMuteKey = () => {
+        if (e.shiftKey) {
+          const vMuted = voice.toggleVoice();
+          this.hud.announce('VOICE', vMuted ? 'MUTED' : 'ENABLED', 1000);
+        } else if (e.ctrlKey || e.metaKey) {
+          const mMuted = audio.toggleMusic();
+          this.hud.announce('MUSIC', mMuted ? 'MUTED' : 'ENABLED', 1000);
+        } else {
+          this.hud.setMusic(!audio.toggleMute());
+        }
+      };
       if (e.key === 'p' || e.key === 'P' || e.code === 'Escape') { this.togglePause(); return; }
       if (e.key === 'f' || e.key === 'F') { this.toggleFullscreen(); return; }
       if (this.sim.result !== 'playing') {
@@ -320,7 +366,7 @@ export class GameScene extends Phaser.Scene {
           if (this.sim.result === 'win' && this.stageId > 0 && this.stageId < STAGES.length) this.gotoStage(this.stageId + 1);
           else safeRestart();
         } else if (e.code === 'Space' || e.key === 'r' || e.key === 'R') safeRestart();
-        else if (e.key === 'm' || e.key === 'M') mKey();
+        else if (e.key === 'm' || e.key === 'M') handleMuteKey();
         return;
       }
       if (e.key === '1') this.trySpawn('player', 'swarm');
@@ -331,7 +377,7 @@ export class GameScene extends Phaser.Scene {
       else if (e.key === 'y' || e.key === 'Y') this.tryUpgrade('armor');
       else if (e.key === 't' || e.key === 'T') this.tryTurret();
       else if (e.key === 'q' || e.key === 'Q') this.tryChronoSurge();
-      else if (e.key === 'm' || e.key === 'M') mKey();
+      else if (e.key === 'm' || e.key === 'M') handleMuteKey();
       // Space is the superweapon: it is the one action worth a fat hotkey.
       else if (e.key === ' ') this.tryUltimate();
       else if (e.key === 'x' || e.key === 'X') this.cycleSpeed();
@@ -512,6 +558,10 @@ export class GameScene extends Phaser.Scene {
 
   /** Back to the campaign map — saves progress and exits cleanly. */
   private toMenu(): void {
+    if (this.ghostTimer) { clearTimeout(this.ghostTimer); this.ghostTimer = null; }
+    if (this.ghostPreview) { this.ghostPreview.destroy(); this.ghostPreview = null; }
+    this.time.timeScale = 1;
+    this.speedMul = 1;
     crazyGameplayStop();
     saveProgress(loadProgress());
     this.scene.start('MenuScene');
@@ -546,6 +596,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restart(): void {
+    if (this.ghostTimer) { clearTimeout(this.ghostTimer); this.ghostTimer = null; }
+    if (this.ghostPreview) { this.ghostPreview.destroy(); this.ghostPreview = null; }
     this.time.timeScale = 1;
     this.speedMul = 1;
     this.resultsShown = false;
@@ -569,6 +621,8 @@ export class GameScene extends Phaser.Scene {
 
   private trySpawn(side: 'player' | 'ai', role: UnitRole): void {
     if (side !== 'player') return;
+    if (this.ghostTimer) { clearTimeout(this.ghostTimer); this.ghostTimer = null; }
+    if (this.ghostPreview) { this.ghostPreview.destroy(); this.ghostPreview = null; }
     if (canSpawn(this.sim, 'player', role)) {
       this.pendingIntents.push({ type: 'spawn', side: 'player', role });
       audio.sfxSpawn(this.sim.player.age);

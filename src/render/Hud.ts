@@ -12,6 +12,8 @@ import {
   LANE_HEIGHT,
   LANE_TOP,
   LANE_WIDTH,
+  PLAYER_BASE_X,
+  AI_BASE_X,
   MAX_TURRET_RANK,
   MAX_UPGRADE_RANK,
   ROLE_HOTKEY,
@@ -91,6 +93,10 @@ export class Hud {
   private aiHpText!: Phaser.GameObjects.Text;
   private playerHpFrame!: Phaser.GameObjects.Rectangle;
   private aiHpFrame!: Phaser.GameObjects.Rectangle;
+  private towFrame!: Phaser.GameObjects.Rectangle;
+  private towBarPlayer!: Phaser.GameObjects.Rectangle;
+  private towBarAi!: Phaser.GameObjects.Rectangle;
+  private towMarker!: Phaser.GameObjects.Rectangle;
   private topPanel!: Phaser.GameObjects.Graphics;
   private bottomPanel!: Phaser.GameObjects.Graphics;
   private crest!: Phaser.GameObjects.Image;
@@ -98,6 +104,7 @@ export class Hud {
   private xpIcon!: Phaser.GameObjects.Image;
 
   onSpawnRequest?: (role: UnitRole) => void;
+  onSpawnHover?: (role: UnitRole | null) => void;
   onEvolveRequest?: () => void;
   onUpgradeForge?: () => void;
   onUpgradeArmor?: () => void;
@@ -246,6 +253,17 @@ export class Hud {
       fontFamily: 'monospace', fontSize: '11px', color: '#ffe0b0',
       stroke: '#171009', strokeThickness: 3,
     }).setOrigin(0, 0.5).setDepth(10);
+
+    // Live tug-of-war front line / momentum bar
+    const towW = 140, towH = 4;
+    this.towFrame = s.add.rectangle(w / 2, 57, towW + 4, towH + 4, 0x171009, 0.9)
+      .setOrigin(0.5, 0.5).setDepth(10).setStrokeStyle(1, 0x4d3720);
+    this.towBarPlayer = s.add.rectangle(w / 2 - towW / 2, 57, towW / 2, towH, 0x2ecc71)
+      .setOrigin(0, 0.5).setDepth(11);
+    this.towBarAi = s.add.rectangle(w / 2, 57, towW / 2, towH, 0xef5350)
+      .setOrigin(0, 0.5).setDepth(11);
+    this.towMarker = s.add.rectangle(w / 2, 57, 2, towH + 4, 0xffd166)
+      .setOrigin(0.5, 0.5).setDepth(12);
 
     // Controls (top right)
     const btnStyle = { fontFamily: 'monospace', fontSize: '12px', backgroundColor: '#171009', padding: { x: 8, y: 5 } };
@@ -434,8 +452,14 @@ export class Hud {
     const cd = s.add.rectangle(x - w / 2 + 3, y - h / 2 + 3, 0, h - 6, 0x171009, 0.62).setOrigin(0, 0).setDepth(13).setVisible(false);
 
     bg.on('pointerdown', () => this.onSpawnRequest?.(role));
-    bg.on('pointerover', () => bg.setFillStyle(0x4d3720));
-    bg.on('pointerout', () => bg.setFillStyle(0x171009));
+    bg.on('pointerover', () => {
+      bg.setFillStyle(0x4d3720);
+      this.onSpawnHover?.(role);
+    });
+    bg.on('pointerout', () => {
+      bg.setFillStyle(0x171009);
+      this.onSpawnHover?.(null);
+    });
 
     this.buttons.push({ role, bg, accent, icon, label, cost, hotkey, stats, cd, frame });
   }
@@ -680,6 +704,38 @@ export class Hud {
     this.aiHpBar.width = barW * aRatio;
     this.aiHpBar.setFillStyle(aRatio < 0.3 ? theme.hpEnemy : aRatio < 0.6 ? theme.gold : theme.hpEnemy);
     this.aiHpText.setText(`${Math.max(0, Math.ceil(a.baseHp))} / ${BASE_HP}   ENEMY`);
+
+    // Tug-of-war momentum derived from unit combat power & front line positions
+    let playerPower = 10;
+    let aiPower = 10;
+    let maxPlayerX = PLAYER_BASE_X;
+    let minAiX = AI_BASE_X;
+
+    for (const u of state.units) {
+      if (u.state === 'die') continue;
+      const power = u.hp * 0.5 + u.def.damage * 2 + u.def.cost;
+      if (u.side === 'player') {
+        playerPower += power;
+        if (u.x > maxPlayerX) maxPlayerX = u.x;
+      } else {
+        aiPower += power;
+        if (u.x < minAiX) minAiX = u.x;
+      }
+    }
+    const powerRatio = playerPower / (playerPower + aiPower);
+    const scrimmageX = (maxPlayerX + minAiX) / 2;
+    const posRatio = Phaser.Math.Clamp((scrimmageX - PLAYER_BASE_X) / (AI_BASE_X - PLAYER_BASE_X), 0.05, 0.95);
+    const towRatio = Phaser.Math.Clamp(posRatio * 0.5 + powerRatio * 0.5, 0.05, 0.95);
+
+    const towW = 140;
+    const splitX = (LANE_WIDTH / 2 - towW / 2) + towW * towRatio;
+    this.towBarPlayer.width = towW * towRatio;
+    this.towBarAi.x = splitX;
+    this.towBarAi.width = towW * (1 - towRatio);
+    this.towMarker.x = splitX;
+    this.towBarPlayer.setFillStyle(theme.hpPlayer);
+    this.towBarAi.setFillStyle(theme.hpEnemy);
+    this.towFrame.setStrokeStyle(1, theme.border);
 
     const roleAccent: Record<UnitRole, number> = {
       swarm: theme.xp,

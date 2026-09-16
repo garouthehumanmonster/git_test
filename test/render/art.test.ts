@@ -183,6 +183,16 @@ describe('scale hierarchy', () => {
       expect(human * 2).toBeLessThan(towerH); // two men stacked stay under the roofline
     }
   });
+
+  it('anchors tower footings firmly to the ground line with grounded footprints', () => {
+    for (const age of AGES) {
+      for (const side of ['player', 'ai'] as const) {
+        const fit = BASE_FIT[age][side];
+        expect(fit.foot).toBeGreaterThanOrEqual(fit.h - 2);
+        expect(fit.w).toBeGreaterThanOrEqual(45);
+      }
+    }
+  });
 });
 
 describe('prop art', () => {
