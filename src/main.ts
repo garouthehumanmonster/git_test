@@ -3,27 +3,32 @@ import { BootScene } from './render/BootScene';
 import { MenuScene } from './render/MenuScene';
 import { GameScene } from './render/GameScene';
 import { LANE_WIDTH, LANE_HEIGHT } from './sim/types';
-import { initCrazyGames } from './crazygames';
+import { initCrazyGames, crazyLoadingStart } from './crazygames';
 import './style.css';
 
-initCrazyGames();
+async function bootstrap(): Promise<void> {
+  await initCrazyGames();
+  crazyLoadingStart();
 
-const config: Phaser.Types.Core.GameConfig = {
-  type: Phaser.AUTO,
-  width: LANE_WIDTH,
-  height: LANE_HEIGHT,
-  parent: 'app',
-  backgroundColor: '#0b0918',
-  pixelArt: true,
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-  },
-  scene: [BootScene, MenuScene, GameScene],
-  dom: { createContainer: false },
-};
+  const config: Phaser.Types.Core.GameConfig = {
+    type: Phaser.AUTO,
+    width: LANE_WIDTH,
+    height: LANE_HEIGHT,
+    parent: 'app',
+    backgroundColor: '#0b0918',
+    pixelArt: true,
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+    },
+    scene: [BootScene, MenuScene, GameScene],
+    dom: { createContainer: false },
+  };
 
-new Phaser.Game(config);
+  new Phaser.Game(config);
+}
+
+void bootstrap();
 
 // Ensure the canvas always sits on a solid dark backdrop even before Phaser
 // paints its first frame — prevents the body gradient bleeding through.

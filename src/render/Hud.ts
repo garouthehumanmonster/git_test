@@ -21,6 +21,7 @@ import {
 } from '../sim/types';
 import { colorHex } from './palette';
 import { PIXEL_SCALE } from './palette';
+import { crazyHasAdblock } from '../crazygames';
 
 // ---------------- per-age UI theme ----------------
 interface Theme {
@@ -166,6 +167,7 @@ export class Hud {
   private pauseOverlay?: Phaser.GameObjects.Container;
   private speedBtn!: Phaser.GameObjects.Text;
   private pauseBtn!: Phaser.GameObjects.Text;
+  private bonusBtn!: Phaser.GameObjects.Text;
   private musicOn = true;
   private currentTheme: 'stone' | 'medieval' | 'modern' = 'stone';
 
@@ -237,11 +239,12 @@ export class Hud {
 
     // Controls (top right)
     const btnStyle = { fontFamily: 'monospace', fontSize: '12px', backgroundColor: '#171009', padding: { x: 8, y: 5 } };
-    const bonusBtn = s.add.text(w - 14, 34, 'BONUS +100G', { ...btnStyle, color: '#f4c85b', fontStyle: 'bold' })
+    this.bonusBtn = s.add.text(w - 14, 34, 'BONUS +100G', { ...btnStyle, color: '#f4c85b', fontStyle: 'bold' })
       .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
-    bonusBtn.on('pointerdown', () => this.onRewardedAdRequest?.());
-    bonusBtn.on('pointerover', () => bonusBtn.setStyle({ color: '#ffe0b0' }));
-    bonusBtn.on('pointerout', () => bonusBtn.setStyle({ color: '#f4c85b' }));
+    this.bonusBtn.on('pointerdown', () => this.onRewardedAdRequest?.());
+    this.bonusBtn.on('pointerover', () => this.bonusBtn.setStyle({ color: '#ffe0b0' }));
+    this.bonusBtn.on('pointerout', () => this.bonusBtn.setStyle({ color: '#f4c85b' }));
+    if (crazyHasAdblock()) this.bonusBtn.setVisible(false);
 
     this.musicBtn = s.add.text(w - 14, 10, 'SND', { ...btnStyle, color: '#d9a25e' })
       .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
@@ -907,6 +910,10 @@ export class Hud {
       targets: c, alpha: 0, delay: ms, duration: 300,
       onComplete: () => c.destroy(),
     });
+  }
+
+  setBonusButtonVisible(visible: boolean): void {
+    if (this.bonusBtn) this.bonusBtn.setVisible(visible);
   }
 
   resetGameOver(): void {

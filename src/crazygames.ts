@@ -1,6 +1,13 @@
+import { audio } from './audio/audio';
+
 /**
  * CrazyGames SDK v3 Wrapper
- * Gracefully degrades when running offline or outside CrazyGames.
+ * Fully compliant with CrazyGames QA requirements:
+ * - loadingStart / loadingStop lifecycle
+ * - 180s midgame ad cooldown & 60s initial grace period
+ * - Audio mute / unmute during ad display
+ * - 30s timeout fallback to avoid soft-locks
+ * - Adblock detection
  */
 
 declare global {
@@ -9,6 +16,8 @@ declare global {
       SDK?: {
         init: () => Promise<void>;
         game: {
+          loadingStart: () => void;
+          loadingStop: () => void;
           gameplayStart: () => void;
           gameplayStop: () => void;
           happytime: () => void;
@@ -22,23 +31,63 @@ declare global {
               adError?: (error: unknown) => void;
             }
           ) => void;
+          hasAdblock?: () => Promise<boolean>;
         };
       };
     };
   }
 }
 
+const MIDGAME_COOLDOWN_MS = 180_000;
+const INITIAL_GRACE_PERIOD_MS = 60_000;
+const AD_TIMEOUT_MS = 30_000;
+
+let gameStartTime = Date.now();
+let lastMidgameAdTime = 0;
+let adblockDetected = false;
+
 export async function initCrazyGames(): Promise<void> {
   if (typeof window === 'undefined') return;
+  gameStartTime = Date.now();
   if (window.CrazyGames?.SDK) {
     try {
       await window.CrazyGames.SDK.init();
       console.log('[CrazyGames] SDK v3 initialized');
+      if (window.CrazyGames.SDK.ad?.hasAdblock) {
+        try {
+          adblockDetected = await window.CrazyGames.SDK.ad.hasAdblock();
+          console.log('[CrazyGames] Adblock status:', adblockDetected);
+        } catch {
+          // ignore adblock check error
+        }
+      }
     } catch (err) {
       console.warn('[CrazyGames] SDK init skipped (local/dev mode):', err);
     }
   } else {
     console.log('[CrazyGames] Running in standalone / dev mode (Mock SDK active)');
+  }
+}
+
+export function crazyLoadingStart(): void {
+  try {
+    if (window.CrazyGames?.SDK?.game?.loadingStart) {
+      window.CrazyGames.SDK.game.loadingStart();
+      console.log('[CrazyGames] loadingStart fired');
+    }
+  } catch (e) {
+    console.warn(e);
+  }
+}
+
+export function crazyLoadingStop(): void {
+  try {
+    if (window.CrazyGames?.SDK?.game?.loadingStop) {
+      window.CrazyGames.SDK.game.loadingStop();
+      console.log('[CrazyGames] loadingStop fired');
+    }
+  } catch (e) {
+    console.warn(e);
   }
 }
 
@@ -75,16 +124,58 @@ export function crazyHappytime(): void {
   }
 }
 
+export function crazyHasAdblock(): boolean {
+  return adblockDetected;
+}
+
 export function crazyShowMidgameAd(onComplete?: () => void): void {
+  const now = Date.now();
+  // Comply with CrazyGames QA policy: initial grace period + minimum interval
+  if (now - gameStartTime < INITIAL_GRACE_PERIOD_MS) {
+    console.log('[CrazyGames] Skipping midgame ad: within initial grace period');
+    onComplete?.();
+    return;
+  }
+  if (now - lastMidgameAdTime < MIDGAME_COOLDOWN_MS) {
+    console.log('[CrazyGames] Skipping midgame ad: cooldown active');
+    onComplete?.();
+    return;
+  }
+
+  let settled = false;
+  let timer: number | undefined;
+  let wasMuted = false;
+
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    if (timer) clearTimeout(timer);
+    lastMidgameAdTime = Date.now();
+    if (!wasMuted) audio.setMuted(false);
+    onComplete?.();
+  };
+
   try {
     if (window.CrazyGames?.SDK?.ad?.requestAd) {
+      wasMuted = audio.isMuted();
+      timer = window.setTimeout(() => {
+        console.warn('[CrazyGames] Midgame ad timed out after 30s fallback');
+        finish();
+      }, AD_TIMEOUT_MS);
+
       window.CrazyGames.SDK.ad.requestAd('midgame', {
-        adStarted: () => console.log('[CrazyGames] Midgame ad started'),
+        adStarted: () => {
+          console.log('[CrazyGames] Midgame ad started');
+          audio.setMuted(true);
+        },
         adFinished: () => {
           console.log('[CrazyGames] Midgame ad finished');
-          onComplete?.();
+          finish();
         },
-        adError: () => onComplete?.(),
+        adError: (err) => {
+          console.warn('[CrazyGames] Midgame ad error:', err);
+          finish();
+        },
       });
       return;
     }
@@ -96,29 +187,45 @@ export function crazyShowMidgameAd(onComplete?: () => void): void {
 
 export function crazyShowRewardedAd(onReward: () => void, onError?: () => void): void {
   let settled = false;
+  let timer: number | undefined;
+  let wasMuted = false;
+
   const reward = () => {
     if (settled) return;
     settled = true;
+    if (timer) clearTimeout(timer);
+    if (!wasMuted) audio.setMuted(false);
     onReward();
   };
+
   const fail = () => {
     if (settled) return;
     settled = true;
+    if (timer) clearTimeout(timer);
+    if (!wasMuted) audio.setMuted(false);
     onError?.();
   };
 
   try {
     if (window.CrazyGames?.SDK?.ad?.requestAd) {
+      wasMuted = audio.isMuted();
+      timer = window.setTimeout(() => {
+        console.warn('[CrazyGames] Rewarded ad timed out after 30s');
+        fail();
+      }, AD_TIMEOUT_MS);
+
       window.CrazyGames.SDK.ad.requestAd('rewarded', {
-        adStarted: () => console.log('[CrazyGames] Rewarded ad started'),
+        adStarted: () => {
+          console.log('[CrazyGames] Rewarded ad started');
+          audio.setMuted(true);
+        },
         adFinished: () => {
           console.log('[CrazyGames] Rewarded ad completed! Granting reward.');
           reward();
         },
         adError: (err) => {
-          // A failed or blocked ad is not a completed rewarded view. Granting
-          // here allowed repeated free rewards whenever an ad was unavailable.
           console.warn('[CrazyGames] Rewarded ad error / adblocked:', err);
+          adblockDetected = true;
           fail();
         },
       });

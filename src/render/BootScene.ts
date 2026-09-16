@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { generateTextures } from './textures';
+import { crazyLoadingStop } from '../crazygames';
 
 const AGES = ['stone', 'medieval', 'modern'] as const;
 
@@ -22,6 +23,7 @@ export class BootScene extends Phaser.Scene {
 
   create(): void {
     generateTextures(this);
+    crazyLoadingStop();
     // The campaign front end comes first; it hands a stage id to GameScene.
     this.scene.start('MenuScene');
   }

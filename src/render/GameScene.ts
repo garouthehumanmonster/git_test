@@ -270,6 +270,7 @@ export class GameScene extends Phaser.Scene {
         () => {
           this.rewardInFlight = false;
           audio.sfxError();
+          this.hud.setBonusButtonVisible(false);
         },
       );
     };
