@@ -39,6 +39,7 @@ import {
   crazyGameplayStart,
   crazyGameplayStop,
   crazyHappytime,
+  crazyHasAdblock,
   crazyShowMidgameAd,
   crazyShowRewardedAd,
 } from '../crazygames';
@@ -119,6 +120,7 @@ export class GameScene extends Phaser.Scene {
   private smokeAi!: Phaser.GameObjects.Particles.ParticleEmitter;
   private gameOverHandled = false;
   private rewardInFlight = false;
+  private revivedThisMatch = false;
   private audioStarted = false;
   private shakeTime = 0;
   private shakeMag = 0;
@@ -279,6 +281,8 @@ export class GameScene extends Phaser.Scene {
     this.hud.onToggleMusic = () => { this.hud.setMusic(!audio.toggleMute()); };
     this.hud.onTogglePause = () => this.togglePause();
     this.hud.onCycleSpeed = () => this.cycleSpeed();
+    this.hud.onToggleFullscreen = () => this.toggleFullscreen();
+    this.hud.onReviveRequest = () => this.secondWind();
     this.hud.setMusic(!audio.isMuted());
 
     const safeRestart = () => crazyShowMidgameAd(() => this.restart());
@@ -308,6 +312,7 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
       const mKey = () => { this.hud.setMusic(!audio.toggleMute()); };
       if (e.key === 'p' || e.key === 'P' || e.code === 'Escape') { this.togglePause(); return; }
+      if (e.key === 'f' || e.key === 'F') { this.toggleFullscreen(); return; }
       if (this.sim.result !== 'playing') {
         if (e.code === 'Enter' || e.code === 'NumpadEnter') {
           if (this.sim.result === 'win' && this.stageId > 0 && this.stageId < STAGES.length) this.gotoStage(this.stageId + 1);
@@ -529,6 +534,7 @@ export class GameScene extends Phaser.Scene {
     this.time.timeScale = 1;
     this.speedMul = 1;
     this.resultsShown = false;
+    this.revivedThisMatch = false;
     this.turretRank = { player: 0, ai: 0 };
     this.turretKick = { player: 0, ai: 0 };
     for (const u of this.unitGfx.values()) u.container.destroy();
@@ -679,7 +685,7 @@ export class GameScene extends Phaser.Scene {
       this.speedMul = VICTORY_SLOWMO_MUL;
       this.time.timeScale = VICTORY_SLOWMO_MUL;
       this.cameras.main.flash(220, 255, 224, 176, false);
-      this.time.delayedCall(VICTORY_SLOWMO_MS, () => {
+      this.time.delayedCall(VICTORY_SLOWMO_MS * VICTORY_SLOWMO_MUL, () => {
         this.time.timeScale = 1;
         this.speedMul = 1;
         this.showResults();
@@ -710,7 +716,37 @@ export class GameScene extends Phaser.Scene {
     const payload: ResultsPayload = this.stageId === 0
       ? { ...summary, stars: starRating(summary.result, summary.baseHpRatio), isBest: false, hasNextStage: false }
       : recordResult(summary);
-    this.hud.showResults(payload);
+    const canRevive = this.sim.result === 'loss' && !this.revivedThisMatch && !crazyHasAdblock();
+    this.hud.showResults(payload, canRevive);
+  }
+
+  private secondWind(): void {
+    if (this.revivedThisMatch) return;
+    crazyShowRewardedAd(
+      () => {
+        this.revivedThisMatch = true;
+        this.sim.result = 'playing';
+        this.sim.player.baseHp = Math.floor(BASE_HP * 0.35);
+        this.resultsShown = false;
+        this.hud.resetGameOver();
+        crazyGameplayStart();
+        audio.setMusicState('playing');
+        audio.sfxEvolve();
+        voice.play('reinforcements');
+        this.addFloat(PLAYER_BASE_X + 60, LANE_TOP + 30, 'SECOND WIND! +35% HP', paletteFor(this.sim.player.age).highlight, 60);
+      },
+      () => {
+        audio.sfxError();
+      },
+    );
+  }
+
+  private toggleFullscreen(): void {
+    if (this.scale.isFullscreen) {
+      this.scale.stopFullscreen();
+    } else {
+      this.scale.startFullscreen();
+    }
   }
 
   private shake(ms: number, magnitude: number): void {
@@ -1204,9 +1240,9 @@ export class GameScene extends Phaser.Scene {
     this.dust.setParticleTint(pal.accent);
     this.dust.emitParticleAt(x, y + 12, 12);
 
-    this.shake(220, STRIKE_SHAKE[kind]);
-    this.cameras.main.flash(90, 255, kind === 'volley' ? 150 : 220, 120, false);
-    this.hitStopMs = Math.max(this.hitStopMs, 45);
+    this.shake(360, STRIKE_SHAKE[kind] * 1.6);
+    this.cameras.main.flash(120, 255, kind === 'volley' ? 160 : 230, 130, false);
+    this.hitStopMs = Math.max(this.hitStopMs, 55);
     audio.sfxStrike(kind);
   }
 

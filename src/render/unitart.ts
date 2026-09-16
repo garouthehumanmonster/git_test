@@ -151,167 +151,193 @@ const SLINGER: SpriteOp[] = [
 // ------------------------------------------------------------ medieval age
 
 const MAN_AT_ARMS: SpriteOp[] = [
-  // kite shield with a heraldic cross
+  // kite shield with heraldic cross and gold border
   r(7, 7, 6, 9, 'body'),
   tri(6, 16, 14, 16, 10, 21, 'body'),
-  r(9, 9, 2, 6, 'light'),
-  r(7, 11, 6, 2, 'light'),
-  // legs in mail + sabatons
+  r(6, 7, 1, 9, 'accent'),
+  r(9, 8, 2, 8, 'accent'),
+  r(7, 11, 6, 2, 'accent'),
+  // legs in steel mail & poleyns + sabatons
   r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
+  r(14, 19, 3, 2, 'light'), r(18, 19, 3, 2, 'light'),
   r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
-  // mail hauberk with pauldrons and a tabard stripe
+  // mail hauberk with layered pauldrons and team tabard
   r(13, 9, 8, 7, 'edge'),
-  r(12, 9, 10, 2, 'body'),
-  r(15, 10, 4, 6, 'team'),
+  r(11, 8, 4, 3, 'light'), r(19, 8, 4, 3, 'light'),
+  r(11, 10, 3, 1, 'mid'), r(20, 10, 3, 1, 'mid'),
+  r(14, 10, 4, 6, 'team'),
   r(13, 15, 8, 1, 'panel'),
-  // great helm with a visor slot and a plume
+  // great helm with brass crown band, visor slot and heraldic plume
   r(14, 2, 6, 7, 'light'),
+  r(14, 3, 6, 1, 'accent'),
   r(14, 8, 6, 1, 'body'),
-  r(18, 5, 2, 2, 'ink'),
-  r(15, 0, 4, 2, 'team'),
-  // raised sword: fist, blade, crossguard, pommel
+  r(17, 5, 3, 1, 'ink'),
+  tri(13, 0, 17, 0, 12, 3, 'team'),
+  // raised arming sword: pommel, crossguard, tapered blade with edge gleam
   r(21, 9, 3, 3, 'body'),
-  r(24, 1, 2, 12, 'light'),
   r(22, 11, 6, 1, 'accent'),
-  r(25, 13, 1, 2, 'panel'),
+  r(24, 12, 2, 2, 'accent'),
+  r(24, 2, 2, 9, 'light'),
+  r(24, 3, 1, 7, 'accent'),
+  tri(24, 2, 26, 2, 25, 0, 'light'),
 ];
 
 const KNIGHT_HORSE: SpriteOp[] = [
-  // horse legs + hooves
+  // horse legs + armored hooves
   r(7, 24, 4, 10, 'edge'), r(13, 24, 4, 10, 'mid'),
   r(28, 24, 4, 10, 'mid'), r(34, 24, 4, 10, 'edge'),
   r(6, 34, 6, 1, 'panel'), r(12, 34, 6, 1, 'panel'),
   r(27, 34, 6, 1, 'panel'), r(33, 34, 6, 1, 'panel'),
-  // tail, barrel, caparison with a team trim
+  // tail, barrel, caparison with scalloped heraldic trim
   r(2, 14, 3, 8, 'edge'),
   r(5, 15, 34, 10, 'edge'),
-  r(7, 12, 30, 5, 'body'),
-  r(7, 12, 30, 1, 'team'),
-  // arched neck, head, mane, muzzle, eye
+  r(6, 13, 32, 7, 'mid'),
+  r(7, 12, 30, 6, 'team'),
+  r(7, 18, 30, 1, 'accent'),
+  tri(11, 19, 14, 21, 17, 19, 'accent'),
+  tri(21, 19, 24, 21, 27, 19, 'accent'),
+  // arched neck, barded chanfron (head armor), muzzle, eye slit
   r(37, 7, 7, 10, 'edge'),
-  r(42, 4, 6, 8, 'edge'),
-  r(45, 8, 2, 3, 'mid'),
-  r(45, 6, 1, 1, 'ink'),
+  tri(36, 14, 40, 6, 44, 14, 'edge'),
+  r(41, 4, 6, 8, 'body'),
+  r(42, 3, 3, 2, 'accent'),
+  r(45, 8, 2, 3, 'panel'),
+  r(44, 6, 1, 1, 'ink'),
   r(38, 3, 3, 5, 'mid'),
-  // rider: plate, helm with a plume and visor, shield
+  // rider: plate armor, grand helm with crest, heater shield
   r(14, 3, 8, 10, 'edge'),
   r(13, 3, 10, 1, 'team'),
-  r(16, 0, 5, 4, 'light'),
-  r(15, 0, 2, 2, 'team'),
+  r(16, 0, 5, 5, 'light'),
+  tri(13, 0, 16, 1, 14, 3, 'highlight'),
   r(19, 2, 1, 1, 'ink'),
-  r(22, 3, 6, 10, 'body'),
+  r(22, 3, 6, 9, 'body'),
+  r(22, 3, 6, 1, 'accent'),
+  r(22, 11, 6, 1, 'accent'),
   r(24, 5, 2, 6, 'light'),
-  // couched lance with a pennant
-  r(27, 7, 18, 2, 'edge'),
-  tri(45, 6, 46, 8, 45, 10, 'light'),
-  tri(33, 0, 43, 3, 33, 6, 'team'),
+  // couched lance: vamplate, shaft, steel spearhead, fluttering pennant
+  r(26, 5, 3, 5, 'accent'),
+  r(28, 7, 17, 2, 'edge'),
+  tri(45, 6, 47, 8, 45, 10, 'light'),
+  tri(33, 1, 43, 3, 33, 6, 'team'),
 ];
 
 const ARCHER: SpriteOp[] = [
-  // quiver and arrows over the shoulder
-  r(9, 8, 5, 8, 'body'),
-  r(9, 5, 1, 3, 'light'), r(12, 4, 1, 4, 'light'),
-  // legs + boots
+  // leather quiver, chest strap, fletched arrows
+  r(8, 8, 5, 8, 'panel'),
+  r(12, 10, 6, 2, 'panel'),
+  r(8, 4, 2, 4, 'light'), r(11, 3, 2, 5, 'light'),
+  r(8, 3, 2, 1, 'highlight'), r(11, 2, 2, 1, 'highlight'),
+  // legs + leather boots
   r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
   r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
-  // gambeson with a team trim
+  // padded gambeson with team trim
   r(13, 9, 8, 7, 'edge'),
   r(12, 9, 10, 2, 'body'),
   r(13, 12, 8, 1, 'team'),
   r(13, 15, 8, 1, 'panel'),
-  // hood and face
+  // archer hood with feather and eye
   r(14, 2, 6, 7, 'edge'),
-  r(14, 2, 6, 1, 'team'),
+  r(14, 3, 6, 1, 'team'),
+  tri(11, 0, 14, 1, 13, 3, 'accent'),
   r(17, 5, 3, 3, 'body'),
   r(19, 6, 1, 1, 'ink'),
-  // longbow, string and nocked arrow
+  // recurve longbow: curved limb tips, stave, grip, taut bowstring, nocked arrow
+  tri(22, 0, 25, 0, 25, 3, 'edge'),
+  tri(22, 21, 25, 21, 25, 18, 'edge'),
   r(24, 2, 2, 18, 'edge'),
-  r(23, 0, 3, 3, 'edge'), r(23, 19, 3, 3, 'edge'),
-  r(22, 3, 1, 16, 'light'),
-  r(23, 10, 9, 1, 'light'),
-  tri(32, 8, 33, 10, 32, 12, 'light'),
+  r(23, 9, 3, 3, 'mid'),
+  r(21, 3, 1, 16, 'light'),
+  r(20, 10, 12, 1, 'light'),
+  tri(32, 9, 34, 10, 32, 11, 'light'),
 ];
 
 // -------------------------------------------------------------- modern age
 
 const COMMANDO: SpriteOp[] = [
-  // field radio and antenna on the back
-  r(7, 8, 5, 7, 'mid'),
-  r(8, 1, 1, 7, 'light'),
+  // field radio pack, beacon, whip antenna
+  r(6, 7, 6, 8, 'panel'),
+  r(7, 0, 1, 7, 'panel'),
+  r(7, 0, 1, 1, 'light'),
   r(8, 9, 1, 1, 'highlight'),
-  // legs + boots
+  // legs + combat boots
   r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
   r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
-  // plate carrier over fatigues
-  r(13, 9, 8, 7, 'body'),
-  r(12, 10, 10, 3, 'edge'),
-  r(14, 13, 2, 2, 'mid'), r(17, 13, 2, 2, 'mid'),
-  r(13, 15, 8, 1, 'team'),
-  // helmet with a lit rim, and goggles
-  r(14, 2, 6, 5, 'body'),
-  r(14, 2, 6, 1, 'body'),
-  r(18, 5, 3, 2, 'body'),
+  // plate carrier with ceramic plates and ammo pouches
+  r(12, 9, 10, 7, 'body'),
+  r(13, 10, 8, 4, 'edge'),
+  r(13, 14, 2, 2, 'panel'), r(16, 14, 2, 2, 'panel'), r(19, 14, 2, 2, 'panel'),
+  r(11, 10, 2, 3, 'team'),
+  // tactical helmet, NVG night vision goggles, comms mic
+  r(13, 2, 7, 5, 'mid'),
+  r(13, 4, 7, 1, 'team'),
+  r(18, 4, 3, 2, 'edge'),
+  r(19, 4, 2, 1, 'body'),
+  r(17, 6, 3, 1, 'panel'),
   r(19, 6, 1, 1, 'ink'),
-  // carbine: stock, receiver, optic, barrel, magazine
-  r(21, 12, 3, 3, 'mid'),
-  r(24, 11, 8, 3, 'edge'),
-  r(25, 11, 6, 1, 'accent'),
-  r(30, 9, 5, 2, 'body'),
-  r(35, 12, 5, 1, 'light'),
-  r(25, 14, 3, 4, 'mid'),
-  r(26, 10, 2, 2, 'body'),
+  // carbine: receiver, holographic sight, magazine, barrel, flash hider
+  r(21, 11, 3, 3, 'panel'),
+  r(24, 10, 8, 3, 'mid'),
+  r(25, 8, 4, 2, 'panel'),
+  r(26, 8, 1, 1, 'highlight'),
+  r(25, 13, 3, 4, 'panel'),
+  r(30, 12, 2, 3, 'panel'),
+  r(32, 11, 5, 2, 'edge'),
+  r(37, 11, 1, 2, 'light'),
 ];
 
 const HEAVY_TANK: SpriteOp[] = [
-  // track assembly reaching the ground row
-  r(2, 24, 40, 2, 'edge'),
-  r(2, 26, 40, 9, 'mid'),
-  r(4, 27, 4, 5, 'panel'), r(10, 27, 4, 5, 'panel'), r(16, 27, 4, 5, 'panel'),
-  r(22, 27, 4, 5, 'panel'), r(28, 27, 4, 5, 'panel'), r(34, 27, 4, 5, 'panel'),
-  // hull, glacis plate, team panel
-  r(4, 18, 34, 8, 'body'),
-  r(6, 19, 28, 1, 'accent'),
-  r(6, 18, 26, 1, 'body'),
-  r(6, 21, 8, 4, 'team'),
-  r(36, 18, 6, 8, 'body'),
-  // turret, hatch, antenna
-  r(10, 8, 20, 10, 'edge'),
-  r(11, 8, 18, 2, 'body'),
-  r(11, 12, 18, 4, 'body'),
-  r(12, 5, 6, 3, 'mid'),
-  r(26, 2, 1, 5, 'light'),
-  // main gun: mantlet, barrel, muzzle brake
-  r(29, 9, 3, 5, 'mid'),
-  r(32, 10, 12, 3, 'body'),
-  r(43, 8, 4, 7, 'light'),
-  // cupola machine gun
-  r(20, 4, 11, 2, 'mid'),
-  r(29, 4, 6, 1, 'panel'),
+  // track assembly, roadwheels with hubs, drive sprocket
+  r(2, 24, 40, 2, 'panel'),
+  r(1, 25, 42, 9, 'panel'),
+  r(4, 26, 5, 7, 'mid'), r(6, 28, 1, 3, 'edge'),
+  r(11, 26, 5, 7, 'mid'), r(13, 28, 1, 3, 'edge'),
+  r(18, 26, 5, 7, 'mid'), r(20, 28, 1, 3, 'edge'),
+  r(25, 26, 5, 7, 'mid'), r(27, 28, 1, 3, 'edge'),
+  r(32, 26, 5, 7, 'mid'), r(34, 28, 1, 3, 'edge'),
+  r(38, 26, 4, 6, 'edge'),
+  // hull with sloped glacis, ERA reactive armor tiles, team insignia
+  r(4, 18, 34, 7, 'body'),
+  tri(34, 24, 44, 24, 42, 18, 'edge'),
+  r(15, 18, 4, 3, 'edge'), r(20, 18, 4, 3, 'edge'), r(25, 18, 4, 3, 'edge'),
+  r(6, 19, 8, 4, 'team'),
+  // angular wedge turret, commander cupola, thermal optic, antenna
+  r(10, 8, 20, 9, 'edge'),
+  tri(29, 8, 33, 12, 29, 16, 'edge'),
+  r(12, 5, 5, 3, 'panel'),
+  r(15, 6, 2, 1, 'body'),
+  r(11, 1, 1, 5, 'panel'),
+  // main smoothbore cannon: armored mantlet, thermal bore sleeve, muzzle brake
+  r(29, 10, 4, 5, 'panel'),
+  r(33, 11, 10, 3, 'edge'),
+  r(43, 9, 3, 7, 'mid'),
+  r(46, 10, 1, 5, 'body'),
 ];
 
 const SNIPER: SpriteOp[] = [
-  // ghillie cape with a lit edge
-  r(6, 9, 16, 13, 'mid'),
-  r(6, 9, 16, 1, 'edge'),
-  r(6, 9, 4, 4, 'body'), r(14, 17, 5, 5, 'body'), r(8, 19, 5, 3, 'edge'),
-  // kneeling legs
+  // textured ghillie cape with ragged camouflage tufts, team shoulder patch
+  r(5, 8, 17, 13, 'panel'),
+  tri(5, 12, 3, 15, 6, 17, 'edge'),
+  tri(7, 18, 5, 21, 9, 21, 'mid'),
+  tri(12, 20, 10, 23, 14, 21, 'edge'),
+  r(11, 9, 4, 2, 'team'),
+  // kneeling legs + tactical boots
   r(13, 22, 5, 4, 'edge'), r(18, 20, 5, 6, 'body'),
   r(12, 26, 6, 1, 'panel'), r(18, 26, 6, 1, 'panel'),
-  // torso
-  r(12, 10, 9, 9, 'body'),
-  r(12, 10, 9, 1, 'team'),
-  // head, cap, eye
-  r(14, 4, 6, 6, 'body'),
-  r(13, 3, 7, 1, 'body'),
-  r(19, 6, 1, 1, 'ink'),
-  // anti-materiel rifle: stock, receiver, scope, bipod, muzzle
-  r(17, 13, 5, 3, 'mid'),
-  r(22, 12, 8, 2, 'body'),
-  r(22, 12, 7, 1, 'accent'),
-  r(24, 8, 5, 3, 'mid'),
-  r(28, 9, 2, 1, 'accent'),
-  r(29, 14, 2, 6, 'light'), r(30, 19, 5, 1, 'light'),
-  r(30, 12, 4, 2, 'light'),
+  // sniper boonie hat, mesh veil, eye
+  r(13, 4, 8, 2, 'panel'),
+  r(14, 2, 6, 3, 'mid'),
+  r(17, 5, 3, 3, 'edge'),
+  r(18, 6, 1, 1, 'ink'),
+  // heavy 50 cal anti-materiel rifle: stock, receiver, long range optic, fluted barrel, muzzle brake, bipod
+  r(17, 13, 5, 3, 'panel'),
+  r(22, 12, 7, 3, 'mid'),
+  r(22, 8, 7, 3, 'panel'),
+  r(21, 9, 1, 2, 'body'),
+  r(28, 8, 2, 3, 'body'),
+  r(29, 13, 5, 2, 'edge'),
+  r(34, 12, 2, 4, 'panel'),
+  r(29, 15, 1, 10, 'panel'), r(31, 15, 1, 10, 'panel'),
+  r(28, 25, 5, 1, 'panel'),
 ];
 
 export const UNIT_ART: Record<Age, Record<UnitRole, SpriteOp[]>> = {

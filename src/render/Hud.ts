@@ -105,6 +105,8 @@ export class Hud {
   onTogglePause?: () => void;
   onCycleSpeed?: () => void;
   onRewardedAdRequest?: () => void;
+  onReviveRequest?: () => void;
+  onToggleFullscreen?: () => void;
   onTurretRequest?: () => void;
   onUltimateRequest?: () => void;
   onNextStageRequest?: () => void;
@@ -259,6 +261,12 @@ export class Hud {
     this.pauseBtn = s.add.text(w - 140, 10, '||', { ...btnStyle, color: '#f4c85b' })
       .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
     this.pauseBtn.on('pointerdown', () => this.onTogglePause?.());
+
+    const fsBtn = s.add.text(w - 180, 10, 'FS', { ...btnStyle, color: '#ffe0b0' })
+      .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
+    fsBtn.on('pointerdown', () => this.onToggleFullscreen?.());
+    fsBtn.on('pointerover', () => fsBtn.setStyle({ color: '#f4c85b' }));
+    fsBtn.on('pointerout', () => fsBtn.setStyle({ color: '#ffe0b0' }));
 
     // Action bar
     const roles: UnitRole[] = ['swarm', 'tank', 'ranged'];
@@ -783,18 +791,18 @@ export class Hud {
    * End-of-match results: star rating, clear time, units spawned and enemies
    * destroyed, plus the two actions that matter (next stage / retry).
    */
-  showResults(payload: ResultsPayload): void {
+  showResults(payload: ResultsPayload, canRevive = false): void {
     if (this.gameOverGroup) return;
     const s = this.scene;
     const theme = THEMES[this.currentTheme];
     const win = payload.result === 'win';
     const c = s.add.container(LANE_WIDTH / 2, 250).setDepth(50);
 
-    const bg = s.add.rectangle(0, 0, 600, 258, theme.panelDark, 0.93)
-      .setStrokeStyle(3, win ? theme.gold : theme.hpEnemy);
-    const t1 = s.add.text(0, -92, win ? 'VICTORY' : 'DEFEAT', {
-      fontFamily: 'monospace', fontSize: '40px',
-      color: colorHex(win ? theme.gold : theme.hpEnemy),
+    const bg = s.add.rectangle(0, 0, 560, 240, theme.panelDark, 0.96)
+      .setStrokeStyle(3, win ? theme.gold : theme.borderGlow);
+    const t1 = s.add.text(0, -84, win ? 'VICTORY' : 'DEFEAT', {
+      fontFamily: 'monospace', fontSize: '36px',
+      color: win ? '#f4c85b' : theme.accentText,
       fontStyle: 'bold', stroke: theme.outline, strokeThickness: 6,
     }).setOrigin(0.5);
 
@@ -872,10 +880,13 @@ export class Hud {
       // Final stage cleared, or an endless run won.
       buttons.push(...mkBtn(-90, 'PLAY AGAIN', true, () => this.onRestartRequest?.()));
       buttons.push(...mkBtn(90, 'STAGE MAP', false, () => this.onMenuRequest?.()));
+    } else if (canRevive && this.onReviveRequest) {
+      buttons.push(...mkBtn(-90, 'REVIVE (AD)', true, () => this.onReviveRequest?.()));
+      buttons.push(...mkBtn(90, 'RETRY', false, () => this.onRestartRequest?.()));
     } else {
       buttons.push(...mkBtn(0, 'RETRY', true, () => this.onRestartRequest?.()));
     }
-    const hint = s.add.text(0, 126, win ? 'Press ENTER for the next level' : 'Press ENTER to retry', {
+    const hint = s.add.text(0, 126, win ? 'Press ENTER for the next level' : (canRevive && this.onReviveRequest) ? 'Revive to keep fighting, or RETRY' : 'Press ENTER to retry', {
       fontFamily: 'monospace', fontSize: '11px', color: colorHex(theme.body),
       stroke: theme.outline, strokeThickness: 3,
     }).setOrigin(0.5);
