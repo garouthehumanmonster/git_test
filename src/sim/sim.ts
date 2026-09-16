@@ -55,6 +55,10 @@ import {
   ULT_PER_KILL,
   ULT_START_CHARGE,
   UNIT_DEFS,
+  CHRONO_MAX,
+  CHRONO_PASSIVE_PER_TICK,
+  CHRONO_PER_KILL,
+  CHRONO_SURGE_DURATION_TICKS,
   UPGRADE_BONUS_PER_RANK,
   VET_DMG,
   VET_HP,
@@ -86,6 +90,7 @@ function makePlayer(age: Age, gold: number, forgeRank: 0 | 1 | 2 | 3, armorRank:
     armorRank,
     turret: { rank: turretRank, cooldown: 0, targetId: null },
     ultCharge: ULT_START_CHARGE,
+    chronoCharge: 0,
   };
 }
 
@@ -117,9 +122,17 @@ export function createInitialState(seed = 0xBADF00D, rules: MatchRules = skirmis
     rngState: seed,
     rules,
     stats: emptyStats(),
+    chronoSurgeTicks: 0,
+    chronoSurgeSide: null,
     events: [],
   };
 }
+
+export function canChronoSurge(state: SimState, side: Side): boolean {
+  const p = side === 'player' ? state.player : state.ai;
+  return (p.chronoCharge ?? 0) >= CHRONO_MAX && (!state.chronoSurgeTicks || state.chronoSurgeTicks <= 0) && state.result === 'playing';
+}
+
 
 // ---------------------------------------------------------------------------
 // Intents (validated application)
@@ -284,6 +297,16 @@ function applyIntent(state: SimState, intent: Intent, rng: RNG): void {
     p.ultCharge = 0;
     state.stats.ultimatesUsed[intent.side]++;
     castStrike(state, intent.side, intent.x, rng);
+    return;
+  }
+
+  if (intent.type === 'chronoSurge') {
+    if ((p.chronoCharge ?? 0) < CHRONO_MAX || (state.chronoSurgeTicks ?? 0) > 0) return;
+    p.chronoCharge = 0;
+    state.chronoSurgeTicks = CHRONO_SURGE_DURATION_TICKS;
+    state.chronoSurgeSide = intent.side;
+    state.events.push({ kind: 'chronoSurge', side: intent.side, ttl: CHRONO_SURGE_DURATION_TICKS });
+    return;
   }
 }
 
@@ -570,6 +593,7 @@ function rewardKill(state: SimState, victim: UnitState): void {
   const xpMul = killerSide === 'ai' ? state.rules.aiXpMul : 1;
   p.xp += victim.def.xpValue * xpMul;
   p.ultCharge = Math.min(ULT_MAX, p.ultCharge + ULT_PER_KILL);
+  if (p.chronoCharge !== undefined) p.chronoCharge = Math.min(CHRONO_MAX, p.chronoCharge + CHRONO_PER_KILL);
   state.stats.kills[killerSide]++;
   state.stats.unitsLost[victim.side]++;
   state.stats.goldEarned[killerSide] += goldGain;
@@ -633,16 +657,32 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
   state.ai.gold += GOLD_PER_TICK * state.rules.aiGoldMul * escalation;
   state.player.ultCharge = Math.min(ULT_MAX, state.player.ultCharge + ULT_PASSIVE_PER_TICK);
   state.ai.ultCharge = Math.min(ULT_MAX, state.ai.ultCharge + ULT_PASSIVE_PER_TICK);
+  if (state.player.chronoCharge !== undefined) {
+    state.player.chronoCharge = Math.min(CHRONO_MAX, state.player.chronoCharge + CHRONO_PASSIVE_PER_TICK);
+  }
+  if (state.ai.chronoCharge !== undefined) {
+    state.ai.chronoCharge = Math.min(CHRONO_MAX, state.ai.chronoCharge + CHRONO_PASSIVE_PER_TICK);
+  }
+  if (state.chronoSurgeTicks && state.chronoSurgeTicks > 0) {
+    state.chronoSurgeTicks--;
+    if (state.chronoSurgeTicks === 0) state.chronoSurgeSide = null;
+  }
   if (state.player.spawnLockTicks > 0) state.player.spawnLockTicks--;
   if (state.ai.spawnLockTicks > 0) state.ai.spawnLockTicks--;
   if (state.player.evolveLockTicks > 0) state.player.evolveLockTicks--;
   if (state.ai.evolveLockTicks > 0) state.ai.evolveLockTicks--;
 
   // 4. Units — targeting, movement, attacks
+  const isSurgeActive = (state.chronoSurgeTicks ?? 0) > 0;
   for (const u of state.units) {
     if (u.state === 'die') continue;
     u.ageTicks++;
-    if (u.cooldown > 0) u.cooldown--;
+    const isFriendlySurge = isSurgeActive && u.side === state.chronoSurgeSide;
+    const isEnemyStasis = isSurgeActive && u.side !== state.chronoSurgeSide;
+    if (u.cooldown > 0) {
+      if (isFriendlySurge) u.cooldown = Math.max(0, u.cooldown - 2);
+      else if (!isEnemyStasis || state.tick % 2 === 0) u.cooldown--;
+    }
     // A previous unit in this tick may have killed us via melee.
     if (u.hp <= 0) {
       u.state = 'die';
@@ -714,14 +754,17 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
       const holdsSlot = !isMelee || ahead < FRONT_LINE_SLOTS;
       u.reserve = !holdsSlot;
 
+      const temporalMul = isFriendlySurge ? 1.35 : isEnemyStasis ? 0.35 : 1.0;
+      const unitSpeed = u.def.speed * u.spdMul * temporalMul;
+
       if (dist > u.def.range) {
         u.state = 'walk';
         if (!u.reserve) {
-          u.x += u.dir * u.def.speed * u.spdMul;
+          u.x += u.dir * unitSpeed;
         } else {
           const gap = gapToAllyAhead(state, u);
-          if (gap > RESERVE_GAP + RESERVE_TOLERANCE) u.x += u.dir * u.def.speed * u.spdMul;
-          else if (gap < RESERVE_GAP - RESERVE_TOLERANCE) u.x -= u.dir * u.def.speed * u.spdMul * 0.5;
+          if (gap > RESERVE_GAP + RESERVE_TOLERANCE) u.x += u.dir * unitSpeed;
+          else if (gap < RESERVE_GAP - RESERVE_TOLERANCE) u.x -= u.dir * unitSpeed * 0.5;
         }
       } else if (holdsSlot) {
         u.state = 'fight';
@@ -733,14 +776,16 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
         // In range but queued behind the front line: hold at a readable spacing.
         u.state = 'walk';
         const gap = gapToAllyAhead(state, u);
-        if (gap > RESERVE_GAP + RESERVE_TOLERANCE) u.x += u.dir * u.def.speed * u.spdMul * 0.6;
-        else if (gap < RESERVE_GAP - RESERVE_TOLERANCE) u.x -= u.dir * u.def.speed * u.spdMul * 0.5;
+        if (gap > RESERVE_GAP + RESERVE_TOLERANCE) u.x += u.dir * unitSpeed * 0.6;
+        else if (gap < RESERVE_GAP - RESERVE_TOLERANCE) u.x -= u.dir * unitSpeed * 0.5;
       }
     } else {
       // No enemy left on the lane — advance on the base.
+      const temporalMul = isFriendlySurge ? 1.35 : isEnemyStasis ? 0.35 : 1.0;
+      const unitSpeed = u.def.speed * u.spdMul * temporalMul;
       u.reserve = false;
       u.state = 'walk';
-      u.x += u.dir * u.def.speed * u.spdMul;
+      u.x += u.dir * unitSpeed;
     }
 
     // Clamp x within lane bounds.

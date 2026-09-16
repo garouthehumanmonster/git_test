@@ -17,6 +17,7 @@ import {
   ROLE_HOTKEY,
   ULT_DEFS,
   ULT_MAX,
+  CHRONO_MAX,
   UNIT_DEFS,
 } from '../sim/types';
 import { colorHex } from './palette';
@@ -109,6 +110,7 @@ export class Hud {
   onToggleFullscreen?: () => void;
   onTurretRequest?: () => void;
   onUltimateRequest?: () => void;
+  onChronoSurgeRequest?: () => void;
   onNextStageRequest?: () => void;
   onMenuRequest?: () => void;
 
@@ -158,6 +160,16 @@ export class Hud {
     bg: Phaser.GameObjects.Rectangle;
     icon: Phaser.GameObjects.Image;
     label: Phaser.GameObjects.Text;
+    meter: Phaser.GameObjects.Rectangle;
+    meterBg: Phaser.GameObjects.Rectangle;
+    hotkey: Phaser.GameObjects.Text;
+    frame: Phaser.GameObjects.Graphics;
+    pulse: number;
+  };
+  private chronoBtn!: {
+    bg: Phaser.GameObjects.Rectangle;
+    label: Phaser.GameObjects.Text;
+    statusText: Phaser.GameObjects.Text;
     meter: Phaser.GameObjects.Rectangle;
     meterBg: Phaser.GameObjects.Rectangle;
     hotkey: Phaser.GameObjects.Text;
@@ -266,10 +278,10 @@ export class Hud {
 
     // Action bar
     const roles: UnitRole[] = ['swarm', 'tank', 'ranged'];
-    const btnW = Hud.BTN_W, btnH = Hud.BTN_H, upgW = Hud.UPG_BTN_W;
-    const turretW = Hud.TURRET_BTN_W, ultW = Hud.ULT_BTN_W;
-    const gap = 6;
-    const totalW = btnW * 3 + upgW * 2 + Hud.EVOLVE_BTN_W + turretW + ultW + gap * 7;
+    const btnW = 114, btnH = Hud.BTN_H, upgW = 76;
+    const turretW = 84, ultW = 88, chronoW = 92;
+    const gap = 5;
+    const totalW = btnW * 3 + upgW * 2 + turretW + ultW + chronoW + Hud.EVOLVE_BTN_W + gap * 8;
     let x = (w - totalW) / 2 + btnW / 2;
     const y = PANEL_Y + Math.round((LANE_HEIGHT - PANEL_Y) / 2);
     for (const role of roles) {
@@ -284,12 +296,15 @@ export class Hud {
     x += turretW + gap;
     this.makeUltimateButton(x, y, ultW, btnH);
     x += ultW + gap;
+    this.makeChronoButton(x, y, chronoW, btnH);
+    x += chronoW + gap;
     this.makeEvolveButton(x, y, Hud.EVOLVE_BTN_W, btnH);
 
-    this.subtitle = s.add.text(w / 2, PANEL_Y - 12, '', {
-      fontFamily: 'monospace', fontSize: '13px', color: '#ffe0b0',
+    this.subtitle = s.add.text(w / 2, PANEL_Y - 14, '', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ffe0b0',
       stroke: '#171009', strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(10);
+      backgroundColor: '#171009cc', padding: { x: 12, y: 3 },
+    }).setOrigin(0.5).setDepth(15);
 
     this.makeCollapseBanner();
     this.applyTheme(THEMES.stone);
@@ -498,6 +513,31 @@ export class Hud {
     this.ultBtn = { bg, icon, label, meter, meterBg, hotkey, frame, pulse: 0 };
   }
 
+  /** Tactical Chrono Surge: triggers time warp stasis on enemies and army haste. */
+  private makeChronoButton(x: number, y: number, w: number, h: number): void {
+    const s = this.scene;
+    const frame = s.add.graphics().setDepth(10);
+    const bg = s.add.rectangle(x, y, w - 6, h - 6, 0x171009).setOrigin(0.5).setDepth(11).setInteractive({ useHandCursor: true });
+    const label = s.add.text(x, y - 8, 'TIME WARP', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#38fff0', fontStyle: 'bold',
+      stroke: '#050d12', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(12);
+    const statusText = s.add.text(x, y + 6, '0%', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#ffe0b0',
+      stroke: '#171009', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(12);
+    const meterBg = s.add.rectangle(x, y + h / 2 - 14, w - 16, 5, 0x0a1a20).setOrigin(0.5).setDepth(12);
+    const meter = s.add.rectangle(x - (w - 16) / 2, y + h / 2 - 14, 0.001, 5, 0x16c0b3).setOrigin(0, 0.5).setDepth(13);
+    const hotkey = s.add.text(x + w / 2 - 8, y - h / 2 + 7, 'Q', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#38fff0',
+      stroke: '#050d12', strokeThickness: 3,
+    }).setOrigin(1, 0).setDepth(12);
+    bg.on('pointerdown', () => this.onChronoSurgeRequest?.());
+    bg.on('pointerover', () => bg.setFillStyle(0x123340));
+    bg.on('pointerout', () => bg.setFillStyle(0x171009));
+    this.chronoBtn = { bg, label, statusText, meter, meterBg, hotkey, frame, pulse: 0 };
+  }
+
   private makeUpgradeButton(x: number, y: number, w: number, h: number, which: 'forge' | 'armor'): void {
     const s = this.scene;
     const frame = s.add.graphics().setDepth(10);
@@ -574,16 +614,40 @@ export class Hud {
       const s = this.scene;
       const c = s.add.container(LANE_WIDTH / 2, LANE_HEIGHT / 2 - 20).setDepth(40);
       const theme = THEMES[this.currentTheme];
-      const bg = s.add.rectangle(0, 0, 380, 104, theme.panelDark, 0.86).setStrokeStyle(3, theme.gold);
-      const t = s.add.text(0, -12, 'PAUSED', {
-        fontFamily: 'monospace', fontSize: '32px', color: colorHex(theme.gold), fontStyle: 'bold',
+      const bg = s.add.rectangle(0, 0, 420, 210, theme.panelDark, 0.95).setStrokeStyle(3, theme.gold);
+      const t = s.add.text(0, -72, 'GAME PAUSED', {
+        fontFamily: 'monospace', fontSize: '26px', color: colorHex(theme.gold), fontStyle: 'bold',
         stroke: theme.outline, strokeThickness: 5,
       }).setOrigin(0.5);
-      const h = s.add.text(0, 24, 'Press P or click || to resume', {
-        fontFamily: 'monospace', fontSize: '13px', color: colorHex(theme.body),
+      const sub = s.add.text(0, -44, 'Progress auto-saved to Cloud & Local Storage', {
+        fontFamily: 'monospace', fontSize: '11px', color: '#4ade80',
         stroke: theme.outline, strokeThickness: 3,
       }).setOrigin(0.5);
-      c.add([bg, t, h]);
+
+      const mkBtn = (y: number, text: string, primary: boolean, onClick: () => void) => {
+        const btnBg = s.add.rectangle(0, y, 320, 34, primary ? theme.panel : theme.panelDark, 1)
+          .setStrokeStyle(2, primary ? theme.gold : theme.edge)
+          .setInteractive({ useHandCursor: true });
+        const label = s.add.text(0, y, text, {
+          fontFamily: 'monospace', fontSize: '13px', color: primary ? '#f4c85b' : theme.accentText,
+          fontStyle: 'bold', stroke: theme.outline, strokeThickness: 3,
+        }).setOrigin(0.5);
+        btnBg.on('pointerdown', onClick);
+        btnBg.on('pointerover', () => btnBg.setFillStyle(primary ? theme.panelLight : theme.panel));
+        btnBg.on('pointerout', () => btnBg.setFillStyle(primary ? theme.panel : theme.panelDark));
+        return [btnBg, label];
+      };
+
+      const resumeBtns = mkBtn(-6, 'RESUME BATTLE (P)', true, () => this.onTogglePause?.());
+      const saveLeaveBtns = mkBtn(36, 'SAVE & EXIT TO MAP', false, () => this.onMenuRequest?.());
+      const sndBtns = mkBtn(76, this.musicOn ? 'SOUND: ON' : 'SOUND: MUTED', false, () => {
+        this.musicOn = !this.musicOn;
+        this.onToggleMusic?.();
+        this.updateMusicIcon();
+        (sndBtns[1] as Phaser.GameObjects.Text).setText(this.musicOn ? 'SOUND: ON' : 'SOUND: MUTED');
+      });
+
+      c.add([bg, t, sub, ...resumeBtns, ...saveLeaveBtns, ...sndBtns]);
       this.pauseOverlay = c;
     } else if (!paused && this.pauseOverlay) {
       this.pauseOverlay.destroy();
@@ -765,6 +829,33 @@ export class Hud {
       }
     }
 
+    // Chrono Surge meter: fills with time and combat, activates temporal stasis.
+    {
+      const btn = this.chronoBtn;
+      const charge = p.chronoCharge ?? 0;
+      const surgeActive = (state.chronoSurgeTicks ?? 0) > 0;
+      const ready = charge >= CHRONO_MAX && !surgeActive;
+      const ratio = surgeActive ? (state.chronoSurgeTicks! / 40) : Math.max(0, Math.min(1, charge / CHRONO_MAX));
+      this.drawBtnFrame(
+        btn.frame,
+        btn.bg.x - btn.bg.width / 2, btn.bg.y - btn.bg.height / 2,
+        btn.bg.width, btn.bg.height,
+        { ...theme, btnReady: 0x38fff0, btnLocked: theme.panelDark, borderGlow: 0x38fff0 },
+        ready || surgeActive,
+      );
+      btn.meter.width = Math.max(0.001, btn.meterBg.width * ratio);
+      btn.meter.setFillStyle(surgeActive ? 0xffd166 : ready ? 0x38fff0 : 0x16c0b3);
+      btn.statusText.setText(surgeActive ? `${Math.ceil((state.chronoSurgeTicks! * 100) / 1000)}s WARP` : ready ? 'READY!' : `${Math.floor(charge)}%`);
+      btn.bg.setInteractive({ useHandCursor: ready });
+      if (ready || surgeActive) {
+        btn.pulse += 0.12;
+        const glow = 0.8 + Math.sin(btn.pulse) * 0.2;
+        btn.bg.setAlpha(glow);
+      } else {
+        btn.bg.setAlpha(1);
+      }
+    }
+
     if (state.result !== 'playing') {
       this.subtitle.setText(state.result === 'win'
         ? 'VICTORY - timeline secured  |  SPACE to play again'
@@ -777,9 +868,9 @@ export class Hud {
       this.subtitle.setText('XP READY  |  press E to enter the Modern Age');
     } else {
       const enemies = state.units.filter((u) => u.side === 'ai' && u.state !== 'die').length;
-      if (enemies > 8) this.subtitle.setText('ALERT  |  enemy massing - build tanks and ranged');
+      if (enemies > 8) this.subtitle.setText('ALERT  |  enemy massing - Q Time Warp / build tanks');
       else if (enemies === 0) this.subtitle.setText('PUSH  |  lane clear - send the swarm');
-      else this.subtitle.setText('Deploy units  1 / 2 / 3   |   U forge   Y armor   E evolve');
+      else this.subtitle.setText('Deploy 1/2/3 | Q Time Warp | SPC Ult | U forge | Y armor | E evolve');
     }
   }
 

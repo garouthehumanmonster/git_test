@@ -33,6 +33,13 @@ declare global {
           ) => void;
           hasAdblock?: () => Promise<boolean>;
         };
+        data?: {
+          getItem: (key: string) => Promise<string | null>;
+          setItem: (key: string, value: string) => Promise<void>;
+        };
+        user?: {
+          getUser: () => Promise<{ username?: string; id?: string } | null>;
+        };
       };
     };
   }
@@ -238,4 +245,39 @@ export function crazyShowRewardedAd(onReward: () => void, onError?: () => void):
   }
   console.log('[CrazyGames Mock] Rewarded ad watched (dev reward granted)');
   reward();
+}
+
+export async function crazySaveData(key: string, value: string): Promise<void> {
+  try {
+    if (window.CrazyGames?.SDK?.data?.setItem) {
+      await window.CrazyGames.SDK.data.setItem(key, value);
+      console.log('[CrazyGames] Cloud data saved for key:', key);
+    }
+  } catch (e) {
+    console.warn('[CrazyGames] Data save error:', e);
+  }
+}
+
+export async function crazyLoadData(key: string): Promise<string | null> {
+  try {
+    if (window.CrazyGames?.SDK?.data?.getItem) {
+      const val = await window.CrazyGames.SDK.data.getItem(key);
+      console.log('[CrazyGames] Cloud data loaded for key:', key);
+      return val;
+    }
+  } catch (e) {
+    console.warn('[CrazyGames] Data load error:', e);
+  }
+  return null;
+}
+
+export async function crazyGetUser(): Promise<{ username?: string; id?: string } | null> {
+  try {
+    if (window.CrazyGames?.SDK?.user?.getUser) {
+      return await window.CrazyGames.SDK.user.getUser();
+    }
+  } catch (e) {
+    console.warn('[CrazyGames] User fetch error:', e);
+  }
+  return null;
 }

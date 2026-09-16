@@ -20,13 +20,14 @@ import {
 import {
   canBuildTurret,
   canCastUltimate,
+  canChronoSurge,
   canEvolve,
   canSpawn,
   canUpgrade,
   createInitialState,
   tick,
 } from '../sim/sim';
-import { type ResultsPayload, baseHpRatio, recordResult, stageById, starRating, STAGES } from '../campaign';
+import { type ResultsPayload, baseHpRatio, recordResult, stageById, starRating, STAGES, saveProgress, loadProgress } from '../campaign';
 import { FX_ORIGIN, TURRET_FIT, TURRET_SILL, turretKey } from './turretart';
 import { Hud } from './Hud';
 import { UNIT_FIT, unitKey } from './unitart';
@@ -258,6 +259,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.onMenuRequest = () => this.toMenu();
     this.hud.onTurretRequest = () => this.tryTurret();
     this.hud.onUltimateRequest = () => this.tryUltimate();
+    this.hud.onChronoSurgeRequest = () => this.tryChronoSurge();
     this.hud.onRewardedAdRequest = () => {
       if (this.rewardInFlight || this.sim.result !== 'playing') return;
       this.rewardInFlight = true;
@@ -328,6 +330,7 @@ export class GameScene extends Phaser.Scene {
       else if (e.key === 'u' || e.key === 'U') this.tryUpgrade('forge');
       else if (e.key === 'y' || e.key === 'Y') this.tryUpgrade('armor');
       else if (e.key === 't' || e.key === 'T') this.tryTurret();
+      else if (e.key === 'q' || e.key === 'Q') this.tryChronoSurge();
       else if (e.key === 'm' || e.key === 'M') mKey();
       // Space is the superweapon: it is the one action worth a fat hotkey.
       else if (e.key === ' ') this.tryUltimate();
@@ -476,6 +479,16 @@ export class GameScene extends Phaser.Scene {
     this.pendingIntents.push({ type: 'ultimate', side: 'player', x: this.aimUltimateAt() });
   }
 
+  /** Trigger tactical Chrono Surge (Timeline Warp: enemy stasis + army haste). */
+  private tryChronoSurge(): void {
+    if (this.sim.result !== 'playing') return;
+    if (!canChronoSurge(this.sim, 'player')) {
+      audio.sfxError();
+      return;
+    }
+    this.pendingIntents.push({ type: 'chronoSurge', side: 'player' });
+  }
+
   /**
    * Aim point: the densest knot of enemy units in the lane, biased toward the
    * front. Falls back to the mid-lane when the lane is clear.
@@ -497,8 +510,10 @@ export class GameScene extends Phaser.Scene {
     this.scene.restart({ stageId: Math.min(STAGES.length, Math.max(1, stageId)) });
   }
 
-  /** Back to the campaign map — used by the results card's "next level" edge case. */
+  /** Back to the campaign map — saves progress and exits cleanly. */
   private toMenu(): void {
+    crazyGameplayStop();
+    saveProgress(loadProgress());
     this.scene.start('MenuScene');
   }
 
@@ -962,9 +977,19 @@ export class GameScene extends Phaser.Scene {
     }
 
     const unitPalette = paletteFor(u.def.age);
+    const isSurgeActive = (this.sim.chronoSurgeTicks ?? 0) > 0;
+    const isEnemyStasis = isSurgeActive && u.side !== this.sim.chronoSurgeSide;
+    const isFriendlySurge = isSurgeActive && u.side === this.sim.chronoSurgeSide;
+
     if (this.time.now < g.flashUntilMs) {
       // Time-based flash: exactly 60ms at any render rate, then the art returns.
       g.sprite.setTint(0xffffff);
+    } else if (isEnemyStasis) {
+      // Temporal stasis: icy cyan freeze
+      g.sprite.setTint(0x5ce1e6);
+    } else if (isFriendlySurge) {
+      // Temporal haste: golden temporal rush
+      g.sprite.setTint(0xffd166);
     } else if (g.sprite.isTinted) {
       g.sprite.clearTint();
     }
@@ -1044,12 +1069,14 @@ export class GameScene extends Phaser.Scene {
     const p = paletteFor(age);
     for (const ev of this.sim.events) {
       if (ev.kind === 'hit') {
-        this.addFloat(ev.x, ev.y + 4, `-${ev.damage}`, p.highlight, 24);
-        this.dust.setParticleTint(p.accent);
-        this.dust.emitParticleAt(ev.x, ev.y + 18, 4);
+        const isCrit = ev.damage >= 22;
+        const color = isCrit ? 0xff4757 : 0xffd166;
+        this.addFloat(ev.x + (Math.random() - 0.5) * 12, ev.y - 12, isCrit ? `-${ev.damage}!` : `-${ev.damage}`, color, 24, isCrit);
+        this.dust.setParticleTint(color);
+        this.dust.emitParticleAt(ev.x, ev.y, isCrit ? 8 : 4);
         audio.sfxMeleeHit();
-        this.hitStopMs = Math.max(this.hitStopMs, 20);
-        this.shake(60, 1.5);
+        this.hitStopMs = Math.max(this.hitStopMs, isCrit ? 35 : 20);
+        this.shake(60, isCrit ? 3 : 1.5);
         for (const u of this.sim.units) {
           if (Math.abs(u.x - ev.x) < 10 && u.state !== 'die') {
             const g = this.unitGfx.get(u.id);
@@ -1061,6 +1088,12 @@ export class GameScene extends Phaser.Scene {
             }
           }
         }
+      } else if (ev.kind === 'chronoSurge') {
+        const isPlayer = ev.side === 'player';
+        this.hud.announce('TIME WARP', isPlayer ? 'CHRONO STASIS ACTIVATED!' : 'ENEMY WARPED TIME!', 1800);
+        this.shake(350, 5);
+        audio.sfxEvolve();
+        this.cameras.main.flash(200, 100, 220, 255, false);
       } else if (ev.kind === 'baseHit') {
         const bx = ev.side === 'player' ? PLAYER_BASE_X : AI_BASE_X;
         const basePalette = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
@@ -1247,15 +1280,19 @@ export class GameScene extends Phaser.Scene {
     audio.sfxStrike(kind);
   }
 
-  private addFloat(x: number, y: number, text: string, color: number, ttl: number): void {
+  private addFloat(x: number, y: number, text: string, color: number, ttl: number, pop = false): void {
     const t = this.add.text(x, y, text, {
-      fontFamily: 'monospace', fontSize: '16px', color: colorHex(color), fontStyle: 'bold',
-      stroke: colorHex(paletteFor(this.sim.player.age).dark), strokeThickness: 3,
+      fontFamily: 'monospace', fontSize: pop ? '20px' : '15px', color: colorHex(color), fontStyle: 'bold',
+      stroke: '#050d12', strokeThickness: pop ? 4 : 3,
     }).setOrigin(0.5).setDepth(DEPTH.float);
+    if (pop) {
+      t.setScale(1.35);
+      this.tweens.add({ targets: t, scaleX: 1, scaleY: 1, duration: 140, ease: 'Back.easeOut' });
+    }
     this.floatingText.push(t);
     this.tweens.add({
       targets: t,
-      y: y - 26,
+      y: y - (pop ? 32 : 24),
       alpha: 0,
       duration: ttl * TICK_MS,
       onComplete: () => {

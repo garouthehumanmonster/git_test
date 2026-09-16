@@ -90,6 +90,8 @@ export interface PlayerState {
   turret: TurretState;
   /** Ultimate meter, 0..ULT_MAX. */
   ultCharge: number;
+  /** Chrono meter for tactical timeline warp, 0..CHRONO_MAX. */
+  chronoCharge?: number;
 }
 
 export interface TurretState {
@@ -209,6 +211,9 @@ export interface SimState {
   rules: MatchRules;
   /** Counters for the results screen. */
   stats: MatchStats;
+  /** Active Chrono Surge ticks remaining (0 = inactive). */
+  chronoSurgeTicks?: number;
+  chronoSurgeSide?: Side | null;
   /** Floating combat text events the renderer can consume and then clear. */
   events: SimEvent[];
 }
@@ -222,6 +227,7 @@ export type SimEvent =
   | { kind: 'baseHit'; side: Side; damage: number; ttl: number }
   | { kind: 'turretShot'; side: Side; age: Age; fromX: number; toX: number; toY: number; ttl: number }
   | { kind: 'turretBuilt'; side: Side; rank: number; ttl: number }
+  | { kind: 'chronoSurge'; side: Side; ttl: number }
   | {
       kind: 'strike';
       side: Side;
@@ -244,7 +250,8 @@ export type Intent =
   | { type: 'evolve'; side: Side }
   | { type: 'upgrade'; side: Side; which: 'forge' | 'armor' }
   | { type: 'turret'; side: Side }
-  | { type: 'ultimate'; side: Side; x: number };
+  | { type: 'ultimate'; side: Side; x: number }
+  | { type: 'chronoSurge'; side: Side };
 
 // --- Lane geometry -----------------------------------------------------------
 // The view is a 6:9 arcade canvas, drawn at exactly 2x one authored pixel:
@@ -513,3 +520,9 @@ export const ULT_DEFS: Record<Age, UltDef> = {
 export const AI_THINK_TICKS = 8;       // re-evaluate every ~400ms
 export const AI_AGGRESSION = 0.65;    // 0..1, higher = spawns sooner with less gold
 export const AI_EVOLVE_TRIGGER_XP = 0.9; // ai evolves when it hits this fraction of required XP (and has gold)
+
+// --- Chrono Surge (Unique Temporal RTS Mechanic) -----------------------------
+export const CHRONO_MAX = 100;
+export const CHRONO_SURGE_DURATION_TICKS = 40; // 4s at 100ms/tick
+export const CHRONO_PASSIVE_PER_TICK = 0.35;
+export const CHRONO_PER_KILL = 10;
