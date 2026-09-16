@@ -802,15 +802,15 @@ export class GameScene extends Phaser.Scene {
     const unitPalette = paletteFor(u.def.age);
 
     // Shadow pinned to the foot line, never to the sprite's walk bob.
-    const shadowW = Math.max(20, fit.w * 0.7);
-    const shadow = this.add.ellipse(0, 0, shadowW, 6, 0x000000, 0.35).setOrigin(0.5, 0.5);
+    const shadowW = Math.max(20, fit.w * PIXEL_SCALE * 0.65);
+    const shadow = this.add.ellipse(0, 0, shadowW, 5 * PIXEL_SCALE, 0x000000, 0.35).setOrigin(0.5, 0.5);
 
-    const hpW = Math.max(20, fit.w * 0.8);
-    const hpY = -fit.h * PIXEL_SCALE + 8;
+    const hpW = Math.max(24, fit.w * PIXEL_SCALE * 0.75);
+    const hpY = -fit.foot * PIXEL_SCALE - 6;
     const hpBarBg = this.add.rectangle(0, hpY, hpW, 5, unitPalette.dark, 0.9).setOrigin(0.5);
     const hpBar = this.add.rectangle(-hpW / 2, hpY, hpW, 5, u.side === 'player' ? unitPalette.accent : unitPalette.highlight).setOrigin(0, 0.5);
 
-    const makeChev = (ox: number) => this.add.triangle(ox, hpY - 12, -4, 0, 0, 5, 4, 0, unitPalette.light)
+    const makeChev = (ox: number) => this.add.triangle(ox, hpY - 10, -4, 0, 0, 5, 4, 0, unitPalette.light)
       .setOrigin(0.5).setVisible(false);
     const chev1 = makeChev(-5);
     const chev2 = makeChev(5);
@@ -819,14 +819,14 @@ export class GameScene extends Phaser.Scene {
     container.setScale(0.2).setAlpha(0);
     this.tweens.add({
       targets: container,
-      scaleX: PIXEL_SCALE, scaleY: PIXEL_SCALE,
+      scaleX: 1, scaleY: 1,
       alpha: 1,
       duration: 220,
       ease: 'Back.easeOut',
     });
 
     // Health bars appear only when a unit is hurt or the player inspects it.
-    container.setInteractive(new Phaser.Geom.Rectangle(-fit.w * 0.7, -fit.h * 1.05, fit.w * 1.4, fit.h * 1.1), Phaser.Geom.Rectangle.Contains);
+    container.setInteractive(new Phaser.Geom.Rectangle(-fit.w * PIXEL_SCALE * 0.5, -fit.foot * PIXEL_SCALE, fit.w * PIXEL_SCALE, fit.foot * PIXEL_SCALE + 4), Phaser.Geom.Rectangle.Contains);
     const g: UnitGfx = {
       id: u.id, container, sprite, shadow, hpBar, hpBarBg, chev1, chev2,
       flashUntilMs: 0, currentVet: 0, dying: false, knock: 0, lastAttackTick: u.cooldown,
@@ -932,7 +932,7 @@ export class GameScene extends Phaser.Scene {
       g.sprite.clearTint();
     }
 
-    const hpW = Math.max(20, UNIT_FIT[u.def.age][u.def.role].w * 0.8);
+    const hpW = Math.max(24, UNIT_FIT[u.def.age][u.def.role].w * PIXEL_SCALE * 0.75);
     const owner = u.side === 'player' ? this.sim.player : this.sim.ai;
     const effMax = u.def.hp * u.hpMul * (1 + owner.armorRank * 0.15);
     const ratio = Math.max(0, Math.min(1, u.hp / effMax));
