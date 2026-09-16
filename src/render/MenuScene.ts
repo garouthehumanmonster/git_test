@@ -110,53 +110,70 @@ export class MenuScene extends Phaser.Scene {
       stroke: '#171009', strokeThickness: 5,
     }).setOrigin(0, 0.5);
 
-    const name = this.add.text(0, -h / 2 + 62, stage.name.toUpperCase(), {
-      fontFamily: 'monospace', fontSize: '15px',
+    const name = this.add.text(0, -h / 2 + 54, stage.name.toUpperCase(), {
+      fontFamily: 'monospace', fontSize: '14px',
       color: unlocked ? '#ffe0b0' : '#4d3720', fontStyle: 'bold',
       stroke: '#171009', strokeThickness: 4,
       align: 'center',
       wordWrap: { width: w - 16 },
     }).setOrigin(0.5);
 
-    const tagline = this.add.text(0, -h / 2 + 108, stage.brief, {
-      fontFamily: 'monospace', fontSize: '10px',
-      color: unlocked ? colorHex(agePal.body) : '#3a2a18',
-      stroke: '#171009', strokeThickness: 3,
-      align: 'center',
-      wordWrap: { width: w - 20 },
-    }).setOrigin(0.5, 0);
-
-    const starRow = this.add.text(0, h / 2 - 46, [0, 1, 2].map((i) => (i < stars ? '★' : '☆')).join(' '), {
-      fontFamily: 'monospace', fontSize: '19px',
-      color: stars > 0 ? '#f4c85b' : '#4d3720',
-      stroke: '#171009', strokeThickness: 4,
-    }).setOrigin(0.5);
-
-    const bestText = this.add.text(0, h / 2 - 22, best ? `BEST ${(best / 1000).toFixed(1)}s` : 'NOT CLEARED', {
-      fontFamily: 'monospace', fontSize: '10px',
-      color: unlocked ? '#d9a25e' : '#3a2a18',
-      stroke: '#171009', strokeThickness: 3,
-    }).setOrigin(0.5);
-
-    c.add([bg, top, num, name, tagline, starRow, bestText]);
+    const elements: Phaser.GameObjects.GameObject[] = [bg, top, num, name];
 
     if (unlocked) {
+      const tagline = this.add.text(0, -h / 2 + 84, stage.brief, {
+        fontFamily: 'monospace', fontSize: '10px',
+        color: colorHex(agePal.body),
+        stroke: '#171009', strokeThickness: 3,
+        align: 'center',
+        wordWrap: { width: w - 20 },
+      }).setOrigin(0.5, 0);
+
+      const starRow = this.add.text(0, h / 2 - 42, [0, 1, 2].map((i) => (i < stars ? '★' : '☆')).join(' '), {
+        fontFamily: 'monospace', fontSize: '19px',
+        color: stars > 0 ? '#f4c85b' : '#4d3720',
+        stroke: '#171009', strokeThickness: 4,
+      }).setOrigin(0.5);
+
+      const bestText = this.add.text(0, h / 2 - 18, best ? `BEST ${(best / 1000).toFixed(1)}s` : 'NOT CLEARED', {
+        fontFamily: 'monospace', fontSize: '10px',
+        color: '#d9a25e',
+        stroke: '#171009', strokeThickness: 3,
+      }).setOrigin(0.5);
+
+      elements.push(tagline, starRow, bestText);
+
       bg.setInteractive({ useHandCursor: true });
       bg.on('pointerover', () => { bg.setFillStyle(agePal.panel); c.setScale(1.02); });
       bg.on('pointerout', () => { bg.setFillStyle(agePal.dark); c.setScale(1); });
       bg.on('pointerdown', () => this.startStage(stage.id));
     } else {
-      const lock = this.add.text(0, 4, 'LOCKED', {
-        fontFamily: 'monospace', fontSize: '13px', color: '#4d3720', fontStyle: 'bold',
+      const lock = this.add.text(0, 0, 'LOCKED', {
+        fontFamily: 'monospace', fontSize: '14px', color: '#6d4f2e', fontStyle: 'bold',
         stroke: '#171009', strokeThickness: 4,
       }).setOrigin(0.5).setAngle(-12);
-      const hint = this.add.text(0, 24, `clear stage ${stage.id - 1}`, {
-        fontFamily: 'monospace', fontSize: '10px', color: '#3a2a18',
+      const hint = this.add.text(0, 24, `CLEAR STAGE ${stage.id - 1}`, {
+        fontFamily: 'monospace', fontSize: '10px', color: '#4d3720', fontStyle: 'bold',
         stroke: '#171009', strokeThickness: 3,
       }).setOrigin(0.5);
-      c.add([lock, hint]);
+
+      const starRow = this.add.text(0, h / 2 - 42, '☆ ☆ ☆', {
+        fontFamily: 'monospace', fontSize: '19px',
+        color: '#2e2014',
+        stroke: '#171009', strokeThickness: 4,
+      }).setOrigin(0.5);
+
+      const notCleared = this.add.text(0, h / 2 - 18, 'LOCKED', {
+        fontFamily: 'monospace', fontSize: '10px',
+        color: '#2e2014',
+        stroke: '#171009', strokeThickness: 3,
+      }).setOrigin(0.5);
+
+      elements.push(lock, hint, starRow, notCleared);
       c.setAlpha(0.85);
     }
+
+    c.add(elements);
     return c;
   }
 

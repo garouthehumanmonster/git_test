@@ -685,11 +685,12 @@ export class GameScene extends Phaser.Scene {
       this.speedMul = VICTORY_SLOWMO_MUL;
       this.time.timeScale = VICTORY_SLOWMO_MUL;
       this.cameras.main.flash(220, 255, 224, 176, false);
-      this.time.delayedCall(VICTORY_SLOWMO_MS * VICTORY_SLOWMO_MUL, () => {
+      window.setTimeout(() => {
+        if (!this.scene.isActive()) return;
         this.time.timeScale = 1;
         this.speedMul = 1;
         this.showResults();
-      });
+      }, VICTORY_SLOWMO_MS);
     } else {
       audio.sfxDefeat();
       voice.play('defeat');

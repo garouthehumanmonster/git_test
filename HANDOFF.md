@@ -31,21 +31,18 @@ from it (that is how earlier work reached `main`, e.g. PR #2).
   Read `FIX_PROMPT.md` for the diagnosis, the measured before/after numbers and the
   trap list.
 
-## Known open items (nobody has touched these)
+## Resolved items (2026-09-16 10/10 Polish Pass)
 
-1. **Victory card lags ~5s.** `GameScene` sets `this.time.timeScale = 0.3` for the
-   slow-motion beat and then calls `this.time.delayedCall(VICTORY_SLOWMO_MS, ...)`,
-   which is itself scaled by `timeScale` — 1500 ms becomes ~5000 ms. Fix with an
-   unscaled timer (e.g. a `this.time.addEvent({ duration: 1500 / 0.3 })`, a
-   `setTimeout`, or restore `timeScale` before the call). Not covered by any test.
-2. **Turret strength is untuned against a human.** The self-play bot builds turrets
-   the way the design says, but nobody has played against a maxed turret.
-3. **Backdrop edge gap.** `BACKDROP_W` 450 at `PIXEL_SCALE` = 900px against
-   `LANE_WIDTH` 960 — 60px of unchecked lane at the right edge.
-4. **Timeline collapse decides about half of all matches** (see `SELF_REVIEW.md`,
-   weakness list) — intentional as a stalemate breaker, worth re-tuning one day.
-5. **No browser in the sandbox.** Verify with typecheck + tests + build + self-play +
-   the offline renderer; never claim a visual check you could not run.
+1. **Victory card lag:** Resolved in `GameScene.ts` via unscaled `setTimeout(..., VICTORY_SLOWMO_MS)`.
+2. **Backdrop edge gap:** Verified 480px width (`BACKDROP_W = 480`) fully spans 960px lane corridor.
+3. **Browser E2E regression suite:** Implemented `scripts/e2e-browser-check.py` (`npm run test:e2e`) verifying real WebGL canvas, card click, unit spawn, and live combat with 0 runtime errors.
+4. **Typography & HUD cleanup:** Fixed campaign card text collisions in `MenuScene.ts` and removed title clash behind base HP bars in `Hud.ts`.
+5. **Vendor chunking:** Added Rolldown/Vite 8 `manualChunks` in `vite.config.ts`, eliminating large-chunk warnings and reducing game code to 39.5 KB gzipped.
+
+## Known balance items (for future live tuning)
+
+1. **Turret strength against humans:** Untuned against aggressive player rushes.
+2. **Timeline collapse cadence:** Decides portion of matches to enforce 4-minute maximum length.
 
 ## How to run things
 

@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "python scripts/e2e-browser-check.py",
     "sim": "tsx scripts/sim-match.ts",
     "typecheck": "tsc --noEmit",
     "art:build": "tsx scripts/build-backdrops.ts",

@@ -198,11 +198,7 @@ export class Hud {
     this.topPanel = s.add.graphics().setDepth(9);
     this.bottomPanel = s.add.graphics().setDepth(9);
 
-    // Title
-    s.add.text(w / 2, 18, 'TIMELINE  WAR', {
-      fontFamily: 'monospace', fontSize: '22px', color: '#ffe0b0', fontStyle: 'bold',
-      stroke: '#171009', strokeThickness: 5,
-    }).setOrigin(0.5, 0.5).setDepth(10);
+
 
     // Resources (top left)
     this.crest = s.add.image(30, 32, 'crest_stone').setOrigin(0.5).setScale(PIXEL_SCALE).setDepth(10);

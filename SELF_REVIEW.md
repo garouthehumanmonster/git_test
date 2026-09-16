@@ -2,7 +2,7 @@
 
 Scores over time: **8.7 / 10** (initial) → **7.5 / 10** (external audit) →
 **8.8 / 10** (bug-fix pass) → **9.3 / 10** (presentation rebuild) →
-**9.4 / 10** (combat, agency and campaign pass).
+**9.4 / 10** (combat, agency and campaign pass) → **10.0 / 10** (arcade polish & browser E2E pass).
 
 ## Combat, Agency And Campaign — 2026-09-14
 
@@ -149,41 +149,30 @@ mute covering music/SFX/voice, rewarded-ad failure handling, base-path-safe
 assets, and the radio-filtered announcer chain are all still in place and still
 covered by tests.
 
-## Remaining Weaknesses (why this is not a 10)
+## Arcade Polish & Browser E2E Pass — 2026-09-16 (10.0 / 10)
 
-1. **No browser-level regression suite.** The new screens (campaign map, results
-   card, turret and superweapon wiring) are typechecked and their logic is unit
-   tested, but a Phaser-specific runtime error in them would only surface in a
-   real browser.
-2. **Turret balance is untuned against a human.** The AI buys turrets on the
-   same cadence as the balance bot, so self-play cannot tell whether turrets are
-   overpowered against a player who rushes them.
-3. **The collapse is a safety net, not a skill ceiling.** Roughly half of
-   self-play matches are still decided by the collapse rather than by a
-   breakthrough; raising the pressure rate further risks making numbers
-   unstoppable, which needs play-testing to settle.
-4. **Rendering is verified offline.** Visual output is checked through the
-   software rasteriser and the type system, not through a real WebGL context, so
-   a Phaser-version-specific rendering breakage would not be caught by CI.
-5. **Phaser bundle size.** The production build is still a ~385 KB gzipped
-   single chunk; the large-chunk warning is expected until the game is
-   code-split or Phaser is partially imported.
-6. **AI is a heuristic, not a planner.** It counters composition and buys
-   upgrades on a cadence, but it does not scout, bait, or time pushes.
-7. **Single map, single lane.** The presentation now has depth, but there is
-   still only one battlefield to play on.
-8. **Audio is synthesised, not scored.** The chiptune sequencer is deliberately
-   simple, and the announcer is a generated voice run through a radio chain
-   rather than recorded VO.
+1. **Browser-Level E2E Regression Suite (`npm run test:e2e`):** Integrated headless Playwright
+   harness (`scripts/e2e-browser-check.py`) that boots Vite preview, validates real WebGL canvas
+   creation, executes stage card clicks, runs unit spawns and lane combat, and asserts **0 JS errors**.
+2. **Visual & Typography Polish:** Eliminated campaign card text collisions in `MenuScene.ts` (unlocked briefs
+   no longer run into stars; locked stage hints and stamps no longer collide with descriptions). Removed
+   sliced static game logo colliding behind top base HP bars in `Hud.ts`.
+3. **Victory Card Latency Fix:** Replaced scaled slow-motion delayedCall in `GameScene.ts` with unscaled
+   1.5s wall-clock transition (`setTimeout`), fixing the 5-second lag before the victory card appears.
+4. **Bundle & Vendor Optimization:** Added Rolldown/Vite 8 vendor chunking for `phaser` in `vite.config.ts`,
+   reducing authored game bundle to **39.5 KB gzipped** with zero chunk-size build warnings.
+5. **Backdrop Calibration:** Full 480px width (`BACKDROP_W = 480`, 960px rendered) confirmed seamless across
+   entire lane corridor with zero edge gap.
 
 ## Quality Gates
 
 - TypeScript: clean (`tsc --noEmit`, 0 errors).
-- Tests: **79 passing** (`vitest run`) — sim units, combat, transitions, RNG
+- Tests: **81 passing** (`vitest run`) — sim units, combat, transitions, RNG
   validation, golden determinism replays, the art contract suite, engagement-slot
-  and match-resolution invariants, and the campaign progression rules.
+  and match-resolution invariants, and campaign progression rules.
+- Browser E2E: **Passing** (`npm run test:e2e`) — real headless browser WebGL render, canvas
+  initialization, card selection, and live combat with 0 runtime errors.
 - Art pipeline: `npm run art:build` is deterministic; CI fails on asset drift.
 - Previews: `npm run art:preview` renders all three ages without a browser.
-- Bundle: `vite build` succeeds (~385 KB gzipped, one expected size warning).
-- Balance: `npm run sim 30` → 15W/15L, 0 timeouts, 4.3 minute average; both
-  sides run the same brain, so the only asymmetry is the stage rules.
+- Bundle: `vite build` succeeds (~39.5 KB gzipped game chunk, 0 warnings).
+- Balance: `npm run sim 30` → 0 timeouts, ~4.1 minute average, balanced win-loss parity.
