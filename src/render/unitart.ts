@@ -41,45 +41,47 @@ export function unitKey(age: Age | string, role: UnitRole | string, side: 'playe
 // ---------------------------------------------------------------- stone age
 
 const CLUBBER: SpriteOp[] = [
-  // hide shield, held on the far side
-  r(8, 8, 5, 9, 'body'),
-  r(9, 11, 3, 3, 'accent'),
-  // legs + bare feet
-  r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
-  r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
-  // bare torso with a team sash and leather belt
-  r(13, 9, 8, 7, 'edge'),
-  r(14, 9, 7, 2, 'body'),
-  r(13, 11, 8, 1, 'team'),
-  r(13, 15, 8, 1, 'panel'),
-  // head, hair, headband, eye
+  // hide shield, held on the far side with wood/hide boss
+  r(7, 8, 6, 9, 'mid'),
+  r(8, 9, 4, 7, 'body'),
+  r(9, 11, 2, 3, 'accent'),
+  // legs with calf definition + bare feet
+  r(13, 16, 4, 5, 'edge'), r(14, 21, 3, 5, 'mid'),
+  r(18, 16, 4, 5, 'edge'), r(19, 21, 3, 5, 'mid'),
+  r(13, 26, 4, 1, 'panel'), r(19, 26, 4, 1, 'panel'),
+  // bare torso: back shadow, muscle mid-tone, chest highlight, sash & belt
+  r(12, 9, 9, 7, 'edge'),
+  r(14, 9, 6, 5, 'body'),
+  r(17, 10, 3, 2, 'accent'),
+  r(12, 11, 9, 1, 'team'),
+  r(12, 15, 9, 1, 'panel'),
+  // head: ragged hair fringe, headband, brow ridge, eye, jawline
   r(14, 3, 6, 6, 'body'),
-  r(13, 2, 7, 2, 'panel'),
-  r(14, 4, 6, 1, 'team'),
-  r(18, 6, 1, 1, 'ink'),
-  // club raised overhead: forearm, wrist, shaft, knotted head. Held high so the
-  // weapon reads above the file instead of barring across the next unit's face.
-  r(21, 9, 3, 2, 'body'),
-  r(24, 7, 4, 2, 'body'),
-  r(27, 5, 6, 2, 'edge'),
-  r(31, 1, 5, 5, 'body'),
-  r(32, 2, 2, 1, 'accent'),
+  r(13, 1, 5, 2, 'panel'), r(17, 2, 3, 1, 'panel'),
+  r(13, 4, 7, 1, 'team'),
+  r(19, 5, 1, 1, 'body'), // nose bridge
+  r(18, 5, 1, 1, 'ink'),  // eye
+  // club raised overhead: angled arm, knotted heavy stone cudgel with flake highlights
+  r(20, 8, 3, 3, 'body'),
+  r(23, 6, 4, 2, 'body'),
+  r(26, 4, 5, 3, 'edge'),
+  r(29, 0, 7, 6, 'mid'),
+  r(30, 1, 5, 4, 'edge'),
+  r(31, 2, 3, 2, 'accent'),
+  r(32, 1, 1, 1, 'light'),
 ];
 
 /**
- * War mammoth. Read as an animal first: a domed skull taller than the rider,
- * a trunk hanging down the front of the chest, tusks sweeping up past it, a
- * high shoulder hump sloping to low hindquarters and daylight under the belly
- * between the leg pairs. Kept inside a 48-wide canvas so the beast — however
- * massive — never out-sizes the base tower (54 wide).
+ * War mammoth. High domed skull, curved ivory tusks with sharp points,
+ * shaggy belly fringe, muscular hump and detailed rider.
  */
 const WAR_MAMMOTH: SpriteOp[] = [
-  // legs — near pair in body tone so they read as limbs, far pair darkened
-  r(8, 24, 4, 10, 'edge'), r(13, 24, 3, 10, 'mid'),
-  r(29, 24, 4, 10, 'edge'), r(34, 24, 3, 10, 'mid'),
-  r(7, 34, 6, 1, 'panel'), r(13, 34, 4, 1, 'panel'),
-  r(28, 34, 6, 1, 'panel'), r(34, 34, 4, 1, 'panel'),
-  // body: barrel, then the hump stepping up to the skull crown
+  // legs — muscular stance with massive padded feet
+  r(8, 24, 5, 10, 'edge'), r(13, 24, 3, 10, 'mid'),
+  r(29, 24, 5, 10, 'edge'), r(34, 24, 3, 10, 'mid'),
+  r(7, 34, 7, 1, 'panel'), r(13, 34, 4, 1, 'panel'),
+  r(28, 34, 7, 1, 'panel'), r(34, 34, 4, 1, 'panel'),
+  // body: barrel, hump, shaggy fur fringe
   r(3, 15, 35, 9, 'edge'),
   r(17, 11, 21, 5, 'edge'),
   r(23, 8, 14, 4, 'edge'),
@@ -88,22 +90,29 @@ const WAR_MAMMOTH: SpriteOp[] = [
   r(6, 14, 9, 1, 'body'),
   r(12, 16, 4, 6, 'mid'),
   r(9, 18, 3, 4, 'body'),
-  // tail with a tuft
+  // shaggy underbelly fur tufts
+  tri(9, 24, 13, 26, 15, 24, 'mid'),
+  tri(19, 24, 23, 26, 26, 24, 'mid'),
+  // tail with hair tuft
   r(1, 16, 2, 4, 'edge'), r(0, 19, 2, 4, 'mid'), r(1, 23, 2, 2, 'edge'),
-  // skull: high domed crown over a short face, ear, cheek, eye
+  // skull: high domed crown, ear flap, eye
   r(36, 9, 9, 8, 'edge'),
   r(38, 5, 6, 5, 'edge'),
   r(35, 10, 3, 5, 'mid'),
-  r(39, 12, 3, 3, 'body'),
+  r(39, 11, 3, 4, 'body'),
   r(42, 11, 1, 1, 'ink'),
-  // trunk down the front of the chest, curling at the tip
-  r(44, 13, 2, 8, 'edge'), r(43, 21, 3, 2, 'edge'), r(43, 23, 3, 1, 'mid'),
-  // tusks sweeping forward and up past the trunk
-  r(42, 19, 2, 2, 'light'), r(44, 17, 3, 2, 'light'),
-  r(46, 13, 1, 4, 'light'), r(45, 11, 1, 2, 'light'),
-  // rider: fur-clad chief with a team blanket, spear and pennant
+  // trunk curling at tip
+  r(44, 13, 2, 8, 'edge'),
+  r(43, 21, 3, 2, 'edge'),
+  r(44, 23, 2, 1, 'mid'),
+  // sharp curving ivory tusks
+  tri(41, 20, 44, 16, 43, 20, 'light'),
+  tri(43, 16, 46, 10, 44, 16, 'light'),
+  tri(45, 11, 46, 8, 47, 11, 'light'),
+  r(42, 18, 2, 2, 'accent'),
+  // rider: fur-clad chieftain, team blanket, spear with pennant
   r(21, 8, 5, 5, 'mid'),
-  r(17, 12, 12, 2, 'team'),
+  r(16, 12, 13, 2, 'team'),
   r(20, 4, 6, 6, 'body'),
   r(20, 4, 6, 1, 'team'),
   r(21, 1, 4, 3, 'body'),
@@ -113,24 +122,30 @@ const WAR_MAMMOTH: SpriteOp[] = [
 ];
 
 const SLINGER: SpriteOp[] = [
-  // rock pouch
-  r(12, 10, 4, 4, 'body'),
-  // legs + feet
-  r(13, 16, 4, 10, 'body'), r(18, 16, 4, 10, 'body'),
-  r(12, 26, 5, 1, 'panel'), r(18, 26, 5, 1, 'panel'),
+  // rock pouch on hip
+  r(11, 11, 4, 4, 'panel'),
+  r(12, 12, 2, 2, 'mid'),
+  // legs: dynamic braced throwing stance
+  r(12, 16, 4, 5, 'edge'), r(13, 21, 4, 5, 'body'),
+  r(18, 16, 4, 5, 'edge'), r(19, 21, 4, 5, 'body'),
+  r(12, 26, 5, 1, 'panel'), r(19, 26, 5, 1, 'panel'),
   // torso, team sash, hide skirt
-  r(12, 9, 9, 7, 'body'),
+  r(12, 9, 9, 7, 'edge'),
+  r(13, 9, 7, 5, 'body'),
   r(12, 11, 9, 1, 'team'),
   r(11, 15, 11, 2, 'mid'),
-  // head, hair, eye
+  // head, hair, brow, eye
   r(14, 3, 6, 6, 'body'),
   r(13, 2, 7, 2, 'panel'),
-  r(18, 6, 1, 1, 'ink'),
-  // whirling sling: cord, stone, forearm
+  r(19, 5, 1, 1, 'body'),
+  r(18, 5, 1, 1, 'ink'),
+  // whirling sling: extended cords, stone pouch with rock
   r(21, 9, 3, 2, 'body'),
-  r(24, 6, 1, 1, 'panel'), r(25, 8, 1, 2, 'panel'), r(25, 11, 1, 2, 'panel'), r(24, 13, 2, 1, 'panel'),
-  r(25, 7, 3, 3, 'body'),
-  r(26, 8, 1, 1, 'light'),
+  r(24, 6, 1, 2, 'panel'),
+  r(25, 8, 1, 3, 'panel'),
+  r(24, 11, 2, 2, 'panel'),
+  r(25, 6, 3, 3, 'mid'),
+  r(26, 7, 2, 2, 'light'),
 ];
 
 // ------------------------------------------------------------ medieval age
