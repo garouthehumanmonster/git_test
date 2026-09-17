@@ -1090,8 +1090,19 @@ function chooseBotIntent(state: SimState, side: Side, rng: RNG, profile: BotProf
     return { type: 'turret', side };
   }
 
+  // Evolution check: evolve promptly once eligible!
+  if (canEvolve(state, side)) {
+    return { type: 'evolve', side };
+  }
+
+  // Check if AI has the XP needed for the next age and is saving gold
+  const nextAgeIdx = AGE_ORDER.indexOf(me.age) + 1;
+  const nextAge = nextAgeIdx < AGE_ORDER.length ? AGE_ORDER[nextAgeIdx] : null;
+  const isSavingForAge = nextAge !== null && me.xp >= EVOLVE_XP_REQ[nextAge];
+  const evolveCost = nextAge ? EVOLVE_COST[nextAge] : 0;
+
   // Upgrades — skipped while saving for an age-up so evolution is not starved.
-  if (!canEvolve(state, side) && (me.forgeRank < MAX_UPGRADE_RANK || me.armorRank < MAX_UPGRADE_RANK)) {
+  if (!isSavingForAge && (me.forgeRank < MAX_UPGRADE_RANK || me.armorRank < MAX_UPGRADE_RANK)) {
     const hpRatio = me.baseHp / BASE_HP;
     const wantArmor = hpRatio < 0.75 && me.armorRank <= me.forgeRank;
     const picks: Array<'forge' | 'armor'> = wantArmor ? ['armor', 'forge'] : ['forge', 'armor'];
@@ -1102,10 +1113,6 @@ function chooseBotIntent(state: SimState, side: Side, rng: RNG, profile: BotProf
     }
   }
 
-  if (canEvolve(state, side) && rng.next() < 0.4) {
-    return { type: 'evolve', side };
-  }
-
   // Counter-composition: lean into whatever beats what the enemy is fielding.
   const weights: Array<readonly [UnitRole, number]> = [
     ['swarm', Math.max(0.12, profile.weights.swarm * (1 + theirs.ranged * 1.1 - mine.swarm * 0.5))] as const,
@@ -1113,7 +1120,9 @@ function chooseBotIntent(state: SimState, side: Side, rng: RNG, profile: BotProf
     ['ranged', Math.max(0.12, profile.weights.ranged * (1 + theirs.tank * 1.1 - mine.ranged * 0.5))] as const,
   ];
 
-  const reserve = (1 - profile.aggression) * 18;
+  // Protect evolution gold reserve unless base integrity is in critical danger
+  const baseDanger = me.baseHp < BASE_HP * 0.35;
+  const reserve = isSavingForAge && !baseDanger ? evolveCost : (1 - profile.aggression) * 18;
   for (let tries = 0; tries < 4; tries++) {
     const role = rng.weighted(weights);
     const def = UNIT_DEFS[me.age][role];

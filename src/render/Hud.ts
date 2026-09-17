@@ -188,6 +188,7 @@ export class Hud {
   private pauseOverlay?: Phaser.GameObjects.Container;
   private speedBtn!: Phaser.GameObjects.Text;
   private pauseBtn!: Phaser.GameObjects.Text;
+  private exitBtn!: Phaser.GameObjects.Text;
   private bonusBtn!: Phaser.GameObjects.Text;
   private musicOn = true;
   private currentTheme: 'stone' | 'medieval' | 'modern' = 'stone';
@@ -293,6 +294,12 @@ export class Hud {
     fsBtn.on('pointerdown', () => this.onToggleFullscreen?.());
     fsBtn.on('pointerover', () => fsBtn.setStyle({ color: '#f4c85b' }));
     fsBtn.on('pointerout', () => fsBtn.setStyle({ color: '#ffe0b0' }));
+
+    this.exitBtn = s.add.text(w - 224, 10, 'EXIT', { ...btnStyle, color: '#ef5350' })
+      .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
+    this.exitBtn.on('pointerdown', () => this.onMenuRequest?.());
+    this.exitBtn.on('pointerover', () => this.exitBtn.setStyle({ color: '#ff8a80' }));
+    this.exitBtn.on('pointerout', () => this.exitBtn.setStyle({ color: '#ef5350' }));
 
     // Action bar
     const roles: UnitRole[] = ['swarm', 'tank', 'ranged'];

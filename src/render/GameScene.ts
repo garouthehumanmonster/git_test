@@ -79,6 +79,8 @@ interface UnitGfx {
   hpBarBg: Phaser.GameObjects.Rectangle;
   chev1: Phaser.GameObjects.Triangle;
   chev2: Phaser.GameObjects.Triangle;
+  forgePip: Phaser.GameObjects.Arc;
+  armorPip: Phaser.GameObjects.Arc;
   flashUntilMs: number;
   currentVet: number;
   dying: boolean;
@@ -947,8 +949,10 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5).setVisible(false);
     const chev1 = makeChev(-5);
     const chev2 = makeChev(5);
+    const forgePip = this.add.circle(hpW / 2 + 5, hpY, 2.5, 0xf4c85b).setOrigin(0.5).setVisible(false);
+    const armorPip = this.add.circle(-hpW / 2 - 5, hpY, 2.5, 0x38fff0).setOrigin(0.5).setVisible(false);
 
-    container.add([shadow, sprite, hpBarBg, hpBar, chev1, chev2]);
+    container.add([shadow, sprite, hpBarBg, hpBar, chev1, chev2, forgePip, armorPip]);
     container.setScale(0.2).setAlpha(0);
     this.tweens.add({
       targets: container,
@@ -962,7 +966,7 @@ export class GameScene extends Phaser.Scene {
     const hitW = Math.max(fit.w * PIXEL_SCALE, sprite.displayWidth);
     container.setInteractive(new Phaser.Geom.Rectangle(-hitW * 0.5, -targetH, hitW, targetH + 4), Phaser.Geom.Rectangle.Contains);
     const g: UnitGfx = {
-      id: u.id, container, sprite, shadow, hpBar, hpBarBg, chev1, chev2,
+      id: u.id, container, sprite, shadow, hpBar, hpBarBg, chev1, chev2, forgePip, armorPip,
       flashUntilMs: 0, currentVet: 0, dying: false, knock: 0, lastAttackTick: u.cooldown,
       hovered: false, wasFull: true, baseScale: unitScale,
     };
@@ -1158,6 +1162,8 @@ export class GameScene extends Phaser.Scene {
     const showBar = ratio < 1 || g.hovered;
     g.hpBar.setVisible(showBar);
     g.hpBarBg.setVisible(showBar);
+    g.forgePip.setVisible(showBar && owner.forgeRank > 0);
+    g.armorPip.setVisible(showBar && owner.armorRank > 0);
     g.wasFull = ratio >= 1;
 
     if (u.vet !== g.currentVet) {
@@ -1520,28 +1526,31 @@ export class GameScene extends Phaser.Scene {
 
     const towerLook = (img: Phaser.GameObjects.Image, ratio: number, flash: number, pal: ReturnType<typeof paletteFor>) => {
       if (flash > 0) img.setTint(0xffffff);
-      else if (ratio > 0.6) img.clearTint();
-      else if (ratio > 0.3) img.setTint(pal.body);
-      else img.setTint(pal.mid);
+      else if (ratio > 0.75) img.clearTint();
+      else if (ratio > 0.45) img.setTint(0xe6ded1);
+      else if (ratio > 0.20) img.setTint(pal.body);
+      else img.setTint(pal.highlight);
     };
     towerLook(this.playerBase, pRatio, this.playerBaseFlash, playerPalette);
     towerLook(this.aiBase, aRatio, this.aiBaseFlash, aiPalette);
 
-    if (pRatio < 0.4 && !this.smokePlayer.emitting) this.smokePlayer.start();
-    else if (pRatio >= 0.4 && this.smokePlayer.emitting) this.smokePlayer.stop();
-    if (pRatio < 0.4) this.smokePlayer.frequency = pRatio < 0.15 ? 140 : 320;
-    if (aRatio < 0.4 && !this.smokeAi.emitting) this.smokeAi.start();
-    else if (aRatio >= 0.4 && this.smokeAi.emitting) this.smokeAi.stop();
-    if (aRatio < 0.4) this.smokeAi.frequency = aRatio < 0.15 ? 140 : 320;
+    if (pRatio < 0.65 && !this.smokePlayer.emitting) this.smokePlayer.start();
+    else if (pRatio >= 0.65 && this.smokePlayer.emitting) this.smokePlayer.stop();
+    if (pRatio < 0.65) this.smokePlayer.frequency = pRatio < 0.20 ? 90 : pRatio < 0.40 ? 180 : 380;
+    if (aRatio < 0.65 && !this.smokeAi.emitting) this.smokeAi.start();
+    else if (aRatio >= 0.65 && this.smokeAi.emitting) this.smokeAi.stop();
+    if (aRatio < 0.65) this.smokeAi.frequency = aRatio < 0.20 ? 90 : aRatio < 0.40 ? 180 : 380;
 
     const baseY = laneGroundY(PLAYER_BASE_X) + 12;
     const aiBaseY = laneGroundY(AI_BASE_X) + 12;
     this.playerBase.y = baseY;
     this.aiBase.y = aiBaseY;
+    const pShudder = pRatio < 0.22 && this.sim.player.baseHp > 0 ? Math.sin(t * 18) * 1.5 : 0;
+    const aShudder = aRatio < 0.22 && this.sim.ai.baseHp > 0 ? Math.sin(t * 18 + 1) * 1.5 : 0;
     if (this.playerBaseFlash > 0) { this.playerBase.x = PLAYER_BASE_X + (Math.random() * 4 - 2); this.playerBaseFlash--; }
-    else this.playerBase.x = PLAYER_BASE_X;
+    else this.playerBase.x = PLAYER_BASE_X + pShudder;
     if (this.aiBaseFlash > 0) { this.aiBase.x = AI_BASE_X + (Math.random() * 4 - 2); this.aiBaseFlash--; }
-    else this.aiBase.x = AI_BASE_X;
+    else this.aiBase.x = AI_BASE_X + aShudder;
 
     this.playerFlag.x = this.playerBase.x + 10;
     this.aiFlag.x = this.aiBase.x - 10;

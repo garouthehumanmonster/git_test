@@ -237,30 +237,19 @@ export class AudioEngine {
 
   sfxMeleeHit(): void {
     if (!this.ctx) return;
-    const dur = 0.09;
     const t = this.ctx.currentTime;
-    this.playToneAt(t, { type: 'sine', freqStart: 160, freqEnd: 45, dur: 0.08, vol: 0.35, attack: 0.001, decay: 0.07, dest: this.sfxGain });
-    const buffer = this.getOrMakeNoiseBuffer(0.2);
-    const src = this.ctx.createBufferSource();
-    src.buffer = buffer;
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(2200, t);
-    filter.frequency.exponentialRampToValueAtTime(180, t + dur);
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.32, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    src.connect(filter); filter.connect(g); g.connect(this.sfxGain);
-    src.start(t); src.stop(t + dur);
+    this.playToneAt(t, { type: 'sine', freqStart: 180, freqEnd: 35, dur: 0.10, vol: 0.42, attack: 0.001, decay: 0.09, dest: this.sfxGain });
+    this.playToneAt(t, { type: 'triangle', freqStart: 850, freqEnd: 420, dur: 0.05, vol: 0.22, attack: 0.001, decay: 0.04, dest: this.sfxGain });
+    this.playNoiseAt(t, 0.08, 3200, 240, 0.28);
   }
 
   sfxCrit(): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.playToneAt(t, { type: 'sine', freqStart: 240, freqEnd: 38, dur: 0.22, vol: 0.45, attack: 0.001, decay: 0.2, dest: this.sfxGain });
-    this.playToneAt(t, { type: 'square', freqStart: 1800, freqEnd: 900, dur: 0.08, vol: 0.25, attack: 0.001, decay: 0.07, dest: this.sfxGain });
-    this.playToneAt(t + 0.03, { type: 'triangle', freqStart: 2489, freqEnd: 2489, dur: 0.25, vol: 0.22, attack: 0.002, decay: 0.22, dest: this.sfxGain });
-    this.playNoiseAt(t, 0.12, 4500, 800, 0.25);
+    this.playToneAt(t, { type: 'sine', freqStart: 280, freqEnd: 28, dur: 0.28, vol: 0.55, attack: 0.001, decay: 0.26, dest: this.sfxGain });
+    this.playToneAt(t, { type: 'sawtooth', freqStart: 1400, freqEnd: 420, dur: 0.14, vol: 0.32, attack: 0.001, decay: 0.12, dest: this.sfxGain });
+    this.playToneAt(t + 0.02, { type: 'triangle', freqStart: 2200, freqEnd: 1100, dur: 0.2, vol: 0.28, attack: 0.002, decay: 0.18, dest: this.sfxGain });
+    this.playNoiseAt(t, 0.18, 5500, 400, 0.35);
   }
 
   sfxDeath(): void {
@@ -327,18 +316,21 @@ export class AudioEngine {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     if (age === 'modern') {
-      // Twin MG: a chamber boom under three fast cracks.
-      this.playToneAt(t, { type: 'square', freqStart: 190, freqEnd: 55, dur: 0.1, vol: 0.16, attack: 0.001, decay: 0.09, dest: this.sfxGain });
-      for (let i = 0; i < 3; i++) this.playNoiseAt(t + i * 0.05, 0.04, 5200, 1400, 0.13);
+      // Twin MG: heavy chamber boom under rapid explosive cracks.
+      this.playToneAt(t, { type: 'sine', freqStart: 160, freqEnd: 32, dur: 0.16, vol: 0.38, attack: 0.001, decay: 0.15, dest: this.sfxGain });
+      this.playToneAt(t, { type: 'square', freqStart: 240, freqEnd: 70, dur: 0.09, vol: 0.22, attack: 0.001, decay: 0.08, dest: this.sfxGain });
+      for (let i = 0; i < 3; i++) this.playNoiseAt(t + i * 0.05, 0.05, 5800, 1200, 0.22);
     } else if (age === 'medieval') {
-      // Ballista: rope snap, then a heavy wooden thunk.
-      this.playNoiseAt(t, 0.07, 2600, 700, 0.18);
-      this.playToneAt(t + 0.02, { type: 'triangle', freqStart: 210, freqEnd: 62, dur: 0.22, vol: 0.26, attack: 0.001, decay: 0.2, dest: this.sfxGain });
-      this.playNoiseAt(t + 0.02, 0.14, 900, 220, 0.14);
+      // Ballista: violent torsion snap, then massive structural bolt impact.
+      this.playNoiseAt(t, 0.08, 3000, 600, 0.28);
+      this.playToneAt(t + 0.01, { type: 'sine', freqStart: 180, freqEnd: 38, dur: 0.24, vol: 0.42, attack: 0.001, decay: 0.22, dest: this.sfxGain });
+      this.playToneAt(t + 0.02, { type: 'triangle', freqStart: 280, freqEnd: 80, dur: 0.22, vol: 0.30, attack: 0.001, decay: 0.2, dest: this.sfxGain });
+      this.playNoiseAt(t + 0.02, 0.16, 1200, 180, 0.24);
     } else {
-      // Sling: a whip crack, then the pouch releasing the rock.
-      this.playNoiseAt(t, 0.05, 3000, 900, 0.2);
-      this.playToneAt(t, { type: 'triangle', freqStart: 440, freqEnd: 150, dur: 0.13, vol: 0.2, attack: 0.001, decay: 0.12, dest: this.sfxGain });
+      // Sling: whip crack, then heavy stone release and thud.
+      this.playNoiseAt(t, 0.06, 3600, 800, 0.28);
+      this.playToneAt(t, { type: 'sine', freqStart: 220, freqEnd: 42, dur: 0.18, vol: 0.36, attack: 0.001, decay: 0.16, dest: this.sfxGain });
+      this.playToneAt(t, { type: 'triangle', freqStart: 480, freqEnd: 120, dur: 0.14, vol: 0.24, attack: 0.001, decay: 0.12, dest: this.sfxGain });
     }
   }
 
@@ -348,18 +340,19 @@ export class AudioEngine {
     const t = this.ctx.currentTime;
     if (kind === 'volley') {
       // Arrows saturating a zone: a rolling crackle under a descending drone.
-      for (let i = 0; i < 6; i++) this.playNoiseAt(t + i * 0.07, 0.1, 3200 - i * 240, 900, 0.12);
-      this.playToneAt(t, { type: 'sawtooth', freqStart: 260, freqEnd: 130, dur: 0.5, vol: 0.1, attack: 0.04, decay: 0.45, dest: this.sfxGain });
+      for (let i = 0; i < 8; i++) this.playNoiseAt(t + i * 0.06, 0.12, 3400 - i * 200, 700, 0.18);
+      this.playToneAt(t, { type: 'sawtooth', freqStart: 320, freqEnd: 110, dur: 0.6, vol: 0.18, attack: 0.03, decay: 0.55, dest: this.sfxGain });
+      this.playToneAt(t + 0.3, { type: 'sine', freqStart: 120, freqEnd: 30, dur: 0.5, vol: 0.35, attack: 0.01, decay: 0.45, dest: this.sfxGain });
     } else if (kind === 'airstrike') {
-      // Falling whistle, then a carpet of bombs going off.
-      this.playToneAt(t, { type: 'sine', freqStart: 1700, freqEnd: 220, dur: 0.45, vol: 0.13, attack: 0.03, decay: 0.44, dest: this.sfxGain });
-      for (let i = 0; i < 3; i++) this.playNoiseAt(t + 0.45 + i * 0.12, 0.34, 2000, 160, 0.26);
-      this.playToneAt(t + 0.45, { type: 'sine', freqStart: 150, freqEnd: 30, dur: 0.7, vol: 0.38, attack: 0.001, decay: 0.65, dest: this.sfxGain });
+      // Falling whistle, then a massive carpet bombing shockwave.
+      this.playToneAt(t, { type: 'sine', freqStart: 2100, freqEnd: 180, dur: 0.45, vol: 0.22, attack: 0.02, decay: 0.43, dest: this.sfxGain });
+      for (let i = 0; i < 4; i++) this.playNoiseAt(t + 0.42 + i * 0.11, 0.42, 2400, 120, 0.36);
+      this.playToneAt(t + 0.42, { type: 'sine', freqStart: 180, freqEnd: 24, dur: 0.9, vol: 0.55, attack: 0.001, decay: 0.85, dest: this.sfxGain });
     } else {
-      // Meteor: atmospheric entry, then a ground-shaking blast.
-      this.playToneAt(t, { type: 'sawtooth', freqStart: 80, freqEnd: 260, dur: 0.45, vol: 0.15, attack: 0.12, decay: 0.4, dest: this.sfxGain });
-      this.playNoiseAt(t + 0.45, 0.75, 2600, 110, 0.32);
-      this.playToneAt(t + 0.45, { type: 'sine', freqStart: 130, freqEnd: 24, dur: 0.85, vol: 0.42, attack: 0.001, decay: 0.8, dest: this.sfxGain });
+      // Meteor: atmospheric entry roar, then massive cataclysmic sub-blast.
+      this.playToneAt(t, { type: 'sawtooth', freqStart: 70, freqEnd: 340, dur: 0.45, vol: 0.24, attack: 0.1, decay: 0.4, dest: this.sfxGain });
+      this.playNoiseAt(t + 0.42, 0.9, 3200, 80, 0.45);
+      this.playToneAt(t + 0.42, { type: 'sine', freqStart: 160, freqEnd: 20, dur: 1.1, vol: 0.6, attack: 0.001, decay: 1.0, dest: this.sfxGain });
     }
   }
 
