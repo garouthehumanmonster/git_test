@@ -92,6 +92,10 @@ export interface PlayerState {
   ultCharge: number;
   /** Chrono meter for tactical timeline warp, 0..CHRONO_MAX. */
   chronoCharge?: number;
+  /** War Cry morale boost ticks remaining (0 = inactive). */
+  rallyTicks?: number;
+  /** Cooldown ticks until War Cry can be used again. */
+  rallyCooldown?: number;
 }
 
 export interface TurretState {
@@ -219,7 +223,7 @@ export interface SimState {
 }
 
 export type SimEvent =
-  | { kind: 'hit'; x: number; y: number; damage: number; color: number; ttl: number }
+  | { kind: 'hit'; x: number; y: number; damage: number; color: number; ttl: number; isCrit?: boolean }
   | { kind: 'death'; x: number; y: number; color: number; ttl: number }
   | { kind: 'gold'; side: Side; amount: number; ttl: number }
   | { kind: 'evolve'; side: Side; to: Age; ttl: number }
@@ -228,6 +232,7 @@ export type SimEvent =
   | { kind: 'turretShot'; side: Side; age: Age; fromX: number; toX: number; toY: number; ttl: number }
   | { kind: 'turretBuilt'; side: Side; rank: number; ttl: number }
   | { kind: 'chronoSurge'; side: Side; ttl: number }
+  | { kind: 'warCry'; side: Side; ttl: number }
   | {
       kind: 'strike';
       side: Side;
@@ -251,7 +256,8 @@ export type Intent =
   | { type: 'upgrade'; side: Side; which: 'forge' | 'armor' }
   | { type: 'turret'; side: Side }
   | { type: 'ultimate'; side: Side; x: number }
-  | { type: 'chronoSurge'; side: Side };
+  | { type: 'chronoSurge'; side: Side }
+  | { type: 'warCry'; side: Side };
 
 // --- Lane geometry -----------------------------------------------------------
 // The view is a 6:9 arcade canvas, drawn at exactly 2x one authored pixel:
@@ -526,3 +532,8 @@ export const CHRONO_MAX = 100;
 export const CHRONO_SURGE_DURATION_TICKS = 40; // 4s at 100ms/tick
 export const CHRONO_PASSIVE_PER_TICK = 0.35;
 export const CHRONO_PER_KILL = 10;
+
+// --- War Cry Rally (Commander Morale Ability) --------------------------------
+export const RALLY_DURATION_TICKS = 80; // 4s of boosted morale (speed + attack rate)
+export const RALLY_COOLDOWN_TICKS = 240; // 12s cooldown
+export const RALLY_GOLD_COST = 25; // tactical investment

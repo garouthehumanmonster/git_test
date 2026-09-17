@@ -21,6 +21,7 @@ import {
   canBuildTurret,
   canCastUltimate,
   canChronoSurge,
+  canWarCry,
   canEvolve,
   canSpawn,
   canUpgrade,
@@ -378,6 +379,7 @@ export class GameScene extends Phaser.Scene {
       else if (e.key === 'y' || e.key === 'Y') this.tryUpgrade('armor');
       else if (e.key === 't' || e.key === 'T') this.tryTurret();
       else if (e.key === 'q' || e.key === 'Q') this.tryChronoSurge();
+      else if (e.key === 'w' || e.key === 'W') this.tryWarCry();
       else if (e.key === 'm' || e.key === 'M') handleMuteKey();
       // Space is the superweapon: it is the one action worth a fat hotkey.
       else if (e.key === ' ') this.tryUltimate();
@@ -536,6 +538,19 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.pendingIntents.push({ type: 'chronoSurge', side: 'player' });
+  }
+
+  /** Trigger tactical War Cry (Commander rally: +25% speed & attack rate). */
+  private tryWarCry(): void {
+    if (this.sim.result !== 'playing') return;
+    if (!canWarCry(this.sim, 'player')) {
+      const p = this.sim.player;
+      if (p.gold < 25) this.hud.announce('WAR CRY LOCKED', 'Requires 25 Gold!', 900);
+      else if ((p.rallyCooldown ?? 0) > 0) this.hud.announce('WAR CRY COOLDOWN', `${Math.ceil((p.rallyCooldown ?? 0) * 0.05)}s left`, 900);
+      audio.sfxError();
+      return;
+    }
+    this.pendingIntents.push({ type: 'warCry', side: 'player' });
   }
 
   /**
@@ -1045,6 +1060,7 @@ export class GameScene extends Phaser.Scene {
     const isSurgeActive = (this.sim.chronoSurgeTicks ?? 0) > 0;
     const isEnemyStasis = isSurgeActive && u.side !== this.sim.chronoSurgeSide;
     const isFriendlySurge = isSurgeActive && u.side === this.sim.chronoSurgeSide;
+    const isRally = ((u.side === 'player' ? this.sim.player.rallyTicks : this.sim.ai.rallyTicks) ?? 0) > 0;
 
     if (this.time.now < g.flashUntilMs) {
       // Time-based flash: exactly 60ms at any render rate, then the art returns.
@@ -1055,6 +1071,12 @@ export class GameScene extends Phaser.Scene {
     } else if (isFriendlySurge) {
       // Temporal haste: golden temporal rush
       g.sprite.setTint(0xffd166);
+    } else if (isRally) {
+      // War cry morale aura: fiery crimson-gold glow
+      g.sprite.setTint(0xffa834);
+    } else if (u.vet >= 2) {
+      // Elite veteran: distinct prestige shine
+      g.sprite.setTint(0xffeb3b);
     } else if (g.sprite.isTinted) {
       g.sprite.clearTint();
     }
@@ -1134,14 +1156,20 @@ export class GameScene extends Phaser.Scene {
     const p = paletteFor(age);
     for (const ev of this.sim.events) {
       if (ev.kind === 'hit') {
-        const isCrit = ev.damage >= 22;
-        const color = isCrit ? 0xff4757 : 0xffd166;
-        this.addFloat(ev.x + (Math.random() - 0.5) * 12, ev.y - 12, isCrit ? `-${ev.damage}!` : `-${ev.damage}`, color, 24, isCrit);
+        const isCrit = ev.isCrit ?? (ev.damage >= 22);
+        const color = isCrit ? 0xffd700 : 0xffd166;
+        this.addFloat(ev.x + (Math.random() - 0.5) * 12, ev.y - 14, isCrit ? `CRIT! -${ev.damage}` : `-${ev.damage}`, color, isCrit ? 36 : 24, isCrit);
         this.dust.setParticleTint(color);
-        this.dust.emitParticleAt(ev.x, ev.y, isCrit ? 8 : 4);
-        audio.sfxMeleeHit();
-        this.hitStopMs = Math.max(this.hitStopMs, isCrit ? 35 : 20);
-        this.shake(60, isCrit ? 3 : 1.5);
+        this.dust.emitParticleAt(ev.x, ev.y, isCrit ? 10 : 4);
+        if (isCrit) {
+          audio.sfxCrit();
+          this.hitStopMs = Math.max(this.hitStopMs, 45);
+          this.shake(90, 3.5);
+        } else {
+          audio.sfxMeleeHit();
+          this.hitStopMs = Math.max(this.hitStopMs, 20);
+          this.shake(50, 1.5);
+        }
         for (const u of this.sim.units) {
           if (Math.abs(u.x - ev.x) < 10 && u.state !== 'die') {
             const g = this.unitGfx.get(u.id);
@@ -1157,8 +1185,16 @@ export class GameScene extends Phaser.Scene {
         const isPlayer = ev.side === 'player';
         this.hud.announce('TIME WARP', isPlayer ? 'CHRONO STASIS ACTIVATED!' : 'ENEMY WARPED TIME!', 1800);
         this.shake(350, 5);
-        audio.sfxEvolve();
+        audio.sfxChronoSurge();
+        if (isPlayer) voice.play('chrono_surge');
         this.cameras.main.flash(200, 100, 220, 255, false);
+      } else if (ev.kind === 'warCry') {
+        const isPlayer = ev.side === 'player';
+        this.hud.announce('WAR CRY', isPlayer ? 'ALL UNITS RALLY (+25% SPD)!' : 'ENEMY WAR CRY!', 1800);
+        this.shake(250, 4);
+        audio.sfxWarCry();
+        if (isPlayer) voice.play('war_cry');
+        this.cameras.main.flash(180, 255, 180, 50, false);
       } else if (ev.kind === 'baseHit') {
         const bx = ev.side === 'player' ? PLAYER_BASE_X : AI_BASE_X;
         const basePalette = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
@@ -1173,6 +1209,8 @@ export class GameScene extends Phaser.Scene {
         this.burst.emitParticleAt(ev.x, ev.y - 6, 12);
         this.dust.setParticleTint(p.highlight);
         this.dust.emitParticleAt(ev.x, ev.y + 10, 8);
+        audio.sfxDeath();
+        this.spawnCoinPickup(ev.x, ev.y);
         this.hitStopMs = Math.max(this.hitStopMs, 35);
         this.shake(80, 2);
       } else if (ev.kind === 'turretShot') {
@@ -1196,12 +1234,11 @@ export class GameScene extends Phaser.Scene {
         audio.sfxCollapse();
         voice.play('collapse');
       } else if (ev.kind === 'gold') {
-        const gp = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
         this.addFloat(
           ev.side === 'player' ? PLAYER_BASE_X + 46 : AI_BASE_X - 46,
           LANE_TOP + 22,
           `+${ev.amount}G`,
-          gp.highlight,
+          0xffd700,
           28,
         );
         if (ev.side === 'player') audio.sfxGold();
@@ -1211,12 +1248,13 @@ export class GameScene extends Phaser.Scene {
         const color = ev.which === 'forge' ? up.highlight : up.accent;
         this.addFloat(
           ev.side === 'player' ? PLAYER_BASE_X + 46 : AI_BASE_X - 46,
-          LANE_TOP + 4,
-          `+ ${label} ${'I'.repeat(ev.rank)}`,
+          LANE_TOP + 22,
+          `${label} ${ev.rank}`,
           color,
-          50,
+          36,
         );
-        if (ev.side === 'player') audio.sfxEvolve();
+        this.hud.announce(`${label} UPGRADED`, `rank ${ev.rank}`, 1600);
+        audio.sfxUpgrade();
       } else if (ev.kind === 'evolve') {
         const ep = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
         this.addFloat(
@@ -1346,6 +1384,25 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.flash(120, 255, kind === 'volley' ? 160 : 230, 130, false);
     this.hitStopMs = Math.max(this.hitStopMs, 55);
     audio.sfxStrike(kind);
+  }
+
+  private spawnCoinPickup(startX: number, startY: number): void {
+    const coin = this.add.circle(startX, startY, 4.5, 0xffd700).setDepth(DEPTH.float);
+    const core = this.add.circle(startX, startY, 2.5, 0xfffacd).setDepth(DEPTH.float + 1);
+    this.tweens.add({
+      targets: [coin, core],
+      x: PLAYER_BASE_X + 35,
+      y: LANE_TOP + 20,
+      scaleX: 0.35,
+      scaleY: 0.35,
+      alpha: 0.2,
+      duration: 520,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        coin.destroy();
+        core.destroy();
+      },
+    });
   }
 
   private addFloat(x: number, y: number, text: string, color: number, ttl: number, pop = false): void {

@@ -222,26 +222,93 @@ export class AudioEngine {
 
   sfxSpawn(age: AgeKey = 'stone'): void {
     if (!this.ctx) return;
-    const baseFreq = age === 'modern' ? 820 : age === 'medieval' ? 560 : 380;
-    this.playTone({ type: 'square', freqStart: baseFreq, freqEnd: baseFreq * 1.9, dur: 0.14, vol: 0.22, attack: 0.004, decay: 0.1, dest: this.sfxGain });
+    const t = this.ctx.currentTime;
+    if (age === 'modern') {
+      this.playToneAt(t, { type: 'sine', freqStart: 900, freqEnd: 1800, dur: 0.08, vol: 0.18, attack: 0.002, decay: 0.07, dest: this.sfxGain });
+      this.playToneAt(t + 0.04, { type: 'square', freqStart: 1200, freqEnd: 2400, dur: 0.09, vol: 0.15, attack: 0.002, decay: 0.08, dest: this.sfxGain });
+    } else if (age === 'medieval') {
+      this.playToneAt(t, { type: 'sawtooth', freqStart: 392, freqEnd: 523, dur: 0.18, vol: 0.24, attack: 0.01, decay: 0.16, dest: this.sfxGain });
+      this.playToneAt(t + 0.05, { type: 'triangle', freqStart: 523, freqEnd: 659, dur: 0.22, vol: 0.22, attack: 0.01, decay: 0.19, dest: this.sfxGain });
+    } else {
+      this.playToneAt(t, { type: 'sine', freqStart: 120, freqEnd: 50, dur: 0.15, vol: 0.32, attack: 0.002, decay: 0.14, dest: this.sfxGain });
+      this.playToneAt(t + 0.03, { type: 'sawtooth', freqStart: 220, freqEnd: 330, dur: 0.18, vol: 0.2, attack: 0.02, decay: 0.15, dest: this.sfxGain });
+    }
   }
 
   sfxMeleeHit(): void {
     if (!this.ctx) return;
-    const dur = 0.08;
+    const dur = 0.09;
     const t = this.ctx.currentTime;
+    this.playToneAt(t, { type: 'sine', freqStart: 160, freqEnd: 45, dur: 0.08, vol: 0.35, attack: 0.001, decay: 0.07, dest: this.sfxGain });
     const buffer = this.getOrMakeNoiseBuffer(0.2);
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(1800, t);
-    filter.frequency.exponentialRampToValueAtTime(220, t + dur);
+    filter.frequency.setValueAtTime(2200, t);
+    filter.frequency.exponentialRampToValueAtTime(180, t + dur);
     const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.35, t);
+    g.gain.setValueAtTime(0.32, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + dur);
     src.connect(filter); filter.connect(g); g.connect(this.sfxGain);
     src.start(t); src.stop(t + dur);
+  }
+
+  sfxCrit(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.playToneAt(t, { type: 'sine', freqStart: 240, freqEnd: 38, dur: 0.22, vol: 0.45, attack: 0.001, decay: 0.2, dest: this.sfxGain });
+    this.playToneAt(t, { type: 'square', freqStart: 1800, freqEnd: 900, dur: 0.08, vol: 0.25, attack: 0.001, decay: 0.07, dest: this.sfxGain });
+    this.playToneAt(t + 0.03, { type: 'triangle', freqStart: 2489, freqEnd: 2489, dur: 0.25, vol: 0.22, attack: 0.002, decay: 0.22, dest: this.sfxGain });
+    this.playNoiseAt(t, 0.12, 4500, 800, 0.25);
+  }
+
+  sfxDeath(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.playToneAt(t, { type: 'sawtooth', freqStart: 140, freqEnd: 32, dur: 0.28, vol: 0.3, attack: 0.002, decay: 0.26, dest: this.sfxGain });
+    this.playNoiseAt(t, 0.18, 1200, 150, 0.22);
+  }
+
+  sfxUpgrade(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.playToneAt(t, { type: 'triangle', freqStart: 1175, freqEnd: 1175, dur: 0.25, vol: 0.3, attack: 0.001, decay: 0.24, dest: this.sfxGain });
+    this.playToneAt(t, { type: 'sine', freqStart: 1760, freqEnd: 1760, dur: 0.2, vol: 0.2, attack: 0.001, decay: 0.19, dest: this.sfxGain });
+    const chord = [440, 554, 659, 880];
+    chord.forEach((f, i) => {
+      this.playToneAt(t + 0.06 + i * 0.04, { type: 'triangle', freqStart: f, freqEnd: f * 1.02, dur: 0.35, vol: 0.18, attack: 0.01, decay: 0.3, dest: this.sfxGain });
+    });
+  }
+
+  sfxChronoSurge(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(110, t);
+    osc.frequency.exponentialRampToValueAtTime(880, t + 0.5);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 6;
+    filter.frequency.setValueAtTime(200, t);
+    filter.frequency.exponentialRampToValueAtTime(3200, t + 0.45);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.01, t);
+    g.gain.linearRampToValueAtTime(0.35, t + 0.15);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    osc.connect(filter); filter.connect(g); g.connect(this.sfxGain);
+    osc.start(t); osc.stop(t + 0.55);
+    this.playToneAt(t + 0.1, { type: 'sine', freqStart: 90, freqEnd: 30, dur: 0.6, vol: 0.4, attack: 0.01, decay: 0.55, dest: this.sfxGain });
+  }
+
+  sfxWarCry(): void {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    this.playToneAt(t, { type: 'sawtooth', freqStart: 220, freqEnd: 277, dur: 0.45, vol: 0.28, attack: 0.03, decay: 0.4, dest: this.sfxGain });
+    this.playToneAt(t, { type: 'sawtooth', freqStart: 223, freqEnd: 280, dur: 0.45, vol: 0.28, attack: 0.03, decay: 0.4, dest: this.sfxGain });
+    this.playToneAt(t + 0.08, { type: 'square', freqStart: 330, freqEnd: 440, dur: 0.5, vol: 0.22, attack: 0.04, decay: 0.42, dest: this.sfxGain });
+    this.playNoiseAt(t + 0.05, 0.35, 1800, 400, 0.2);
   }
 
   sfxArrow(age: AgeKey = 'stone'): void {
@@ -309,8 +376,9 @@ export class AudioEngine {
   sfxGold(): void {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    this.playToneAt(t, { type: 'square', freqStart: 1046, freqEnd: 1046, dur: 0.06, vol: 0.18, attack: 0.001, decay: 0.06, dest: this.sfxGain });
-    this.playToneAt(t + 0.06, { type: 'square', freqStart: 1318, freqEnd: 1568, dur: 0.12, vol: 0.2, attack: 0.001, decay: 0.1, dest: this.sfxGain });
+    this.playToneAt(t, { type: 'triangle', freqStart: 1760, freqEnd: 1760, dur: 0.12, vol: 0.22, attack: 0.001, decay: 0.11, dest: this.sfxGain });
+    this.playToneAt(t + 0.04, { type: 'triangle', freqStart: 2637, freqEnd: 2637, dur: 0.16, vol: 0.24, attack: 0.001, decay: 0.15, dest: this.sfxGain });
+    this.playToneAt(t + 0.08, { type: 'sine', freqStart: 3520, freqEnd: 3520, dur: 0.14, vol: 0.16, attack: 0.001, decay: 0.13, dest: this.sfxGain });
   }
 
   sfxEvolve(): void {

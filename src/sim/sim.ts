@@ -59,6 +59,9 @@ import {
   CHRONO_PASSIVE_PER_TICK,
   CHRONO_PER_KILL,
   CHRONO_SURGE_DURATION_TICKS,
+  RALLY_COOLDOWN_TICKS,
+  RALLY_DURATION_TICKS,
+  RALLY_GOLD_COST,
   UPGRADE_BONUS_PER_RANK,
   VET_DMG,
   VET_HP,
@@ -91,6 +94,8 @@ function makePlayer(age: Age, gold: number, forgeRank: 0 | 1 | 2 | 3, armorRank:
     turret: { rank: turretRank, cooldown: 0, targetId: null },
     ultCharge: ULT_START_CHARGE,
     chronoCharge: 0,
+    rallyTicks: 0,
+    rallyCooldown: 0,
   };
 }
 
@@ -131,6 +136,12 @@ export function createInitialState(seed = 0xBADF00D, rules: MatchRules = skirmis
 export function canChronoSurge(state: SimState, side: Side): boolean {
   const p = side === 'player' ? state.player : state.ai;
   return (p.chronoCharge ?? 0) >= CHRONO_MAX && (!state.chronoSurgeTicks || state.chronoSurgeTicks <= 0) && state.result === 'playing';
+}
+
+export function canWarCry(state: SimState, side: Side): boolean {
+  if (state.result !== 'playing') return false;
+  const p = side === 'player' ? state.player : state.ai;
+  return (p.rallyCooldown ?? 0) <= 0 && (p.rallyTicks ?? 0) <= 0 && p.gold >= RALLY_GOLD_COST;
 }
 
 
@@ -306,6 +317,15 @@ function applyIntent(state: SimState, intent: Intent, rng: RNG): void {
     state.chronoSurgeTicks = CHRONO_SURGE_DURATION_TICKS;
     state.chronoSurgeSide = intent.side;
     state.events.push({ kind: 'chronoSurge', side: intent.side, ttl: CHRONO_SURGE_DURATION_TICKS });
+    return;
+  }
+
+  if (intent.type === 'warCry') {
+    if (!canWarCry(state, intent.side)) return;
+    p.gold -= RALLY_GOLD_COST;
+    p.rallyTicks = RALLY_DURATION_TICKS;
+    p.rallyCooldown = RALLY_COOLDOWN_TICKS;
+    state.events.push({ kind: 'warCry', side: intent.side, ttl: RALLY_DURATION_TICKS });
     return;
   }
 }
@@ -542,7 +562,7 @@ function computeDamageVs(attacker: UnitState, defender: UnitState, attackerPlaye
   return dmg;
 }
 
-function damageUnit(state: SimState, u: UnitState, amount: number, color: number, attackerId: number): void {
+function damageUnit(state: SimState, u: UnitState, amount: number, color: number, attackerId: number, isCrit = false): void {
   if (u.state === 'die') return;
   u.lastAttackerId = attackerId;
   u.hp -= amount;
@@ -551,8 +571,9 @@ function damageUnit(state: SimState, u: UnitState, amount: number, color: number
     x: u.x,
     y: LANE_CENTER_Y + u.yOffset - 18,
     damage: Math.round(amount),
-    color,
-    ttl: 24,
+    color: isCrit ? 0xffd700 : color,
+    ttl: isCrit ? 36 : 24,
+    isCrit,
   });
   if (u.hp <= 0) {
     u.hp = 0;
@@ -671,16 +692,23 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
   if (state.ai.spawnLockTicks > 0) state.ai.spawnLockTicks--;
   if (state.player.evolveLockTicks > 0) state.player.evolveLockTicks--;
   if (state.ai.evolveLockTicks > 0) state.ai.evolveLockTicks--;
+  if (state.player.rallyTicks && state.player.rallyTicks > 0) state.player.rallyTicks--;
+  if (state.ai.rallyTicks && state.ai.rallyTicks > 0) state.ai.rallyTicks--;
+  if (state.player.rallyCooldown && state.player.rallyCooldown > 0) state.player.rallyCooldown--;
+  if (state.ai.rallyCooldown && state.ai.rallyCooldown > 0) state.ai.rallyCooldown--;
 
   // 4. Units — targeting, movement, attacks
   const isSurgeActive = (state.chronoSurgeTicks ?? 0) > 0;
   for (const u of state.units) {
     if (u.state === 'die') continue;
     u.ageTicks++;
+    const owner = u.side === 'player' ? state.player : state.ai;
     const isFriendlySurge = isSurgeActive && u.side === state.chronoSurgeSide;
     const isEnemyStasis = isSurgeActive && u.side !== state.chronoSurgeSide;
+    const isRally = (owner.rallyTicks ?? 0) > 0;
     if (u.cooldown > 0) {
       if (isFriendlySurge) u.cooldown = Math.max(0, u.cooldown - 2);
+      else if (isRally && state.tick % 4 === 0) u.cooldown = Math.max(0, u.cooldown - 2);
       else if (!isEnemyStasis || state.tick % 2 === 0) u.cooldown--;
     }
     // A previous unit in this tick may have killed us via melee.
@@ -689,8 +717,6 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
       u.target = null;
       continue;
     }
-
-    const owner = u.side === 'player' ? state.player : state.ai;
 
     // Re-acquire target if current target is dead/gone/out of range.
     let target: UnitState | null = null;
@@ -755,7 +781,8 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
       u.reserve = !holdsSlot;
 
       const temporalMul = isFriendlySurge ? 1.35 : isEnemyStasis ? 0.35 : 1.0;
-      const unitSpeed = u.def.speed * u.spdMul * temporalMul;
+      const rallySpd = isRally ? 1.25 : 1.0;
+      const unitSpeed = u.def.speed * u.spdMul * temporalMul * rallySpd;
 
       if (dist > u.def.range) {
         u.state = 'walk';
@@ -782,7 +809,8 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
     } else {
       // No enemy left on the lane — advance on the base.
       const temporalMul = isFriendlySurge ? 1.35 : isEnemyStasis ? 0.35 : 1.0;
-      const unitSpeed = u.def.speed * u.spdMul * temporalMul;
+      const rallySpd = isRally ? 1.25 : 1.0;
+      const unitSpeed = u.def.speed * u.spdMul * temporalMul * rallySpd;
       u.reserve = false;
       u.state = 'walk';
       u.x += u.dir * unitSpeed;
@@ -946,12 +974,17 @@ function applyFriendlySeparation(state: SimState): void {
 }
 
 function fireAttack(state: SimState, u: UnitState, target: UnitState, owner: PlayerState, rng: RNG): void {
-  const baseDmg = computeDamageVs(u, target, owner) * (0.92 + rng.next() * 0.16);
+  const isRally = (owner.rallyTicks ?? 0) > 0;
+  const roll = rng.next();
+  const isCrit = isRally || (u.vet >= 1 && roll > 0.4) || (u.def.strongVs === target.def.role && roll > 0.5) || roll > 0.88;
+  const rallyDmgMul = isRally ? 1.15 : 1.0;
+
+  const baseDmg = computeDamageVs(u, target, owner) * (0.92 + roll * 0.16) * rallyDmgMul;
   const attackerColor = u.side === 'player' ? 0x64b5f6 : 0xef5350;
 
   if (u.def.range <= 26) {
     // Melee — immediate damage, and tanks cleave through the front line.
-    damageUnit(state, target, baseDmg, attackerColor, u.id);
+    damageUnit(state, target, baseDmg, attackerColor, u.id, isCrit);
     if (target.hp > 0 || true) applyCleave(state, u, target, owner, baseDmg);
     return;
   }
@@ -983,9 +1016,10 @@ function updateProjectiles(state: SimState, rng: RNG): void {
     if (dist <= step) {
       // Impact.
       if (target) {
-        const color = p.side === 'player' ? 0x64b5f6 : 0xef5350;
+        const isCrit = p.damage > target.def.hp * 0.45;
+        const color = isCrit ? 0xffd700 : (p.side === 'player' ? 0x64b5f6 : 0xef5350);
         const dmg = p.damage * (0.95 + rng.next() * 0.1);
-        damageUnit(state, target, dmg, color, p.attackerId);
+        damageUnit(state, target, dmg, color, p.attackerId, isCrit);
         // A tank's ranged cousins are melee, so cleave only applies to melee.
       }
       continue;

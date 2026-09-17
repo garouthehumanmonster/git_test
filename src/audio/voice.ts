@@ -20,7 +20,9 @@ export type VoiceLine =
   | 'reinforcements'
   | 'base_low'
   | 'turret_online'
-  | 'collapse';
+  | 'collapse'
+  | 'war_cry'
+  | 'chrono_surge';
 
 /** Spoken text, also the script used to regenerate the pack. */
 const VOICE_TEXT: Record<VoiceLine, string> = {
@@ -34,6 +36,8 @@ const VOICE_TEXT: Record<VoiceLine, string> = {
   base_low: 'Warning! Base under attack!',
   turret_online: 'Turret online!',
   collapse: 'Timeline collapse! Both bases are decaying. Finish it!',
+  war_cry: 'War cry! All units charge!',
+  chrono_surge: 'Chrono surge! Time accelerates!',
 };
 
 class VoiceAnnouncer {

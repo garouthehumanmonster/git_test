@@ -924,9 +924,10 @@ export class Hud {
       this.subtitle.setText('XP READY  |  press E to enter the Modern Age');
     } else {
       const enemies = state.units.filter((u) => u.side === 'ai' && u.state !== 'die').length;
-      if (enemies > 8) this.subtitle.setText('ALERT  |  enemy massing - Q Time Warp / build tanks');
+      if ((p.rallyTicks ?? 0) > 0) this.subtitle.setText(`WAR CRY ACTIVE (+25% SPEED) | ${Math.ceil((p.rallyTicks ?? 0) * 0.05)}s`);
+      else if (enemies > 8) this.subtitle.setText('ALERT  |  enemy massing - W War Cry / Q Time Warp');
       else if (enemies === 0) this.subtitle.setText('PUSH  |  lane clear - send the swarm');
-      else this.subtitle.setText('Deploy 1/2/3 | Q Time Warp | SPC Ult | U forge | Y armor | E evolve');
+      else this.subtitle.setText('Deploy 1/2/3 | W War Cry | Q Warp | SPC Ult | U/Y upgrade | E evolve');
     }
   }
 
