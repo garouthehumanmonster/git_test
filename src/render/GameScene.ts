@@ -31,7 +31,7 @@ import { type ResultsPayload, baseHpRatio, recordResult, stageById, starRating, 
 import { FX_ORIGIN, TURRET_FIT, TURRET_SILL, turretKey } from './turretart';
 import { Hud } from './Hud';
 import { UNIT_FIT, unitKey } from './unitart';
-import { baseKey } from './basearth';
+import { BASE_FIT, baseKey } from './basearth';
 import { PIXEL_SCALE, colorHex, paletteFor } from './palette';
 import { Stage, laneGroundY } from './stage';
 import { audio } from '../audio/audio';
@@ -87,6 +87,7 @@ interface UnitGfx {
   lastAttackTick: number;
   hovered: boolean;
   wasFull: boolean;
+  baseScale: number;
 }
 
 interface ProjGfx {
@@ -439,11 +440,13 @@ export class GameScene extends Phaser.Scene {
   private makeBase(side: 'player' | 'ai'): Phaser.GameObjects.Image {
     const age = side === 'player' ? this.sim.player.age : this.sim.ai.age;
     const key = baseKey(age, side);
+    const baseFit = BASE_FIT[age][side];
     const groundY = laneGroundY(side === 'player' ? PLAYER_BASE_X : AI_BASE_X) + 12;
-    return this.add.image(side === 'player' ? PLAYER_BASE_X : AI_BASE_X, groundY, key)
+    const img = this.add.image(side === 'player' ? PLAYER_BASE_X : AI_BASE_X, groundY, key)
       .setOrigin(0.5, 1)
-      .setScale(PIXEL_SCALE)
       .setDepth(2);
+    img.setScale((baseFit.h * PIXEL_SCALE) / (img.height || baseFit.h));
+    return img;
   }
 
   /**
@@ -830,7 +833,11 @@ export class GameScene extends Phaser.Scene {
     this.stage.setAge(age);
     this.applyAmbient(age);
     const pal = paletteFor(age);
-    if (this.textures.exists(baseKey(age, 'player'))) this.playerBase.setTexture(baseKey(age, 'player'));
+    if (this.textures.exists(baseKey(age, 'player'))) {
+      this.playerBase.setTexture(baseKey(age, 'player'));
+      const baseFit = BASE_FIT[age].player;
+      this.playerBase.setScale((baseFit.h * PIXEL_SCALE) / (this.playerBase.height || baseFit.h));
+    }
     this.playerFlag.setTexture(`flag_${age}_player`);
     this.playerBaseHpBar.setFillStyle(pal.accent);
     const blob = this.add.circle(PLAYER_BASE_X, laneGroundY(PLAYER_BASE_X) + 10, 90, pal.light, 0.45)
@@ -898,21 +905,21 @@ export class GameScene extends Phaser.Scene {
     const container = this.add.container(u.x, groundY).setDepth(DEPTH.unit);
     const key = unitKey(u.def.age, role, u.side);
     const fit = UNIT_FIT[u.def.age][role];
+    const targetH = fit.h * PIXEL_SCALE;
     const sprite = this.add.image(0, 0, key)
       .setFlipX(u.dir === -1)
-      // Origin is the fitted foot row, so the unit stands exactly on the ground
-      // line instead of floating above it.
-      .setOrigin(0.5, fit.foot / fit.h)
-      .setScale(PIXEL_SCALE);
+      .setOrigin(0.5, 1);
+    const unitScale = sprite.height > 0 ? targetH / sprite.height : PIXEL_SCALE;
+    sprite.setScale(unitScale);
     // Authoring scale is fixed, so a texel is always exactly 2 canvas pixels.
     const unitPalette = paletteFor(u.def.age);
 
     // Shadow pinned to the foot line, never to the sprite's walk bob.
-    const shadowW = Math.max(20, fit.w * PIXEL_SCALE * 0.65);
+    const shadowW = Math.max(20, (sprite.displayWidth || fit.w * PIXEL_SCALE) * 0.65);
     const shadow = this.add.ellipse(0, 0, shadowW, 5 * PIXEL_SCALE, 0x000000, 0.35).setOrigin(0.5, 0.5);
 
-    const hpW = Math.max(24, fit.w * PIXEL_SCALE * 0.75);
-    const hpY = -fit.foot * PIXEL_SCALE - 6;
+    const hpW = Math.max(24, (sprite.displayWidth || fit.w * PIXEL_SCALE) * 0.75);
+    const hpY = -targetH - 6;
     const hpBarBg = this.add.rectangle(0, hpY, hpW, 5, unitPalette.dark, 0.9).setOrigin(0.5);
     const hpBar = this.add.rectangle(-hpW / 2, hpY, hpW, 5, u.side === 'player' ? unitPalette.accent : unitPalette.highlight).setOrigin(0, 0.5);
 
@@ -932,11 +939,12 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Health bars appear only when a unit is hurt or the player inspects it.
-    container.setInteractive(new Phaser.Geom.Rectangle(-fit.w * PIXEL_SCALE * 0.5, -fit.foot * PIXEL_SCALE, fit.w * PIXEL_SCALE, fit.foot * PIXEL_SCALE + 4), Phaser.Geom.Rectangle.Contains);
+    const hitW = Math.max(fit.w * PIXEL_SCALE, sprite.displayWidth);
+    container.setInteractive(new Phaser.Geom.Rectangle(-hitW * 0.5, -targetH, hitW, targetH + 4), Phaser.Geom.Rectangle.Contains);
     const g: UnitGfx = {
       id: u.id, container, sprite, shadow, hpBar, hpBarBg, chev1, chev2,
       flashUntilMs: 0, currentVet: 0, dying: false, knock: 0, lastAttackTick: u.cooldown,
-      hovered: false, wasFull: true,
+      hovered: false, wasFull: true, baseScale: unitScale,
     };
     container.on('pointerover', () => { g.hovered = true; });
     container.on('pointerout', () => { g.hovered = false; });
@@ -951,7 +959,10 @@ export class GameScene extends Phaser.Scene {
     const expectedKey = unitKey(u.def.age, u.def.role, u.side);
     if (g.sprite.texture.key !== expectedKey && this.textures.exists(expectedKey)) {
       g.sprite.setTexture(expectedKey);
-      g.sprite.setScale(PIXEL_SCALE);
+      const fit = UNIT_FIT[u.def.age][u.def.role];
+      const targetH = fit.h * PIXEL_SCALE;
+      g.baseScale = g.sprite.height > 0 ? targetH / g.sprite.height : PIXEL_SCALE;
+      g.sprite.setScale(g.baseScale);
     }
     // The container is scaled during the spawn pop-in, so animated offsets are
     // applied to the children rather than the container.
@@ -976,12 +987,12 @@ export class GameScene extends Phaser.Scene {
       g.sprite.y = bob * 3 - 2;
       g.sprite.x = 0;
       g.sprite.angle = bob * 4 * u.dir;
-      g.sprite.setScale(PIXEL_SCALE, PIXEL_SCALE * (1 + bob * 0.035));
+      g.sprite.setScale(g.baseScale, g.baseScale * (1 + bob * 0.035));
       if (u.reserve) {
         // Reserves hold formation: steady, weapons down, no bounce.
         g.sprite.y = -2 + bob * 0.6;
         g.sprite.angle = bob * 1.2 * u.dir;
-        g.sprite.setScale(PIXEL_SCALE);
+        g.sprite.setScale(g.baseScale);
       }
     } else if (u.state === 'fight') {
       g.sprite.y = -2;
@@ -1025,9 +1036,9 @@ export class GameScene extends Phaser.Scene {
         g.sprite.x = 0;
         g.sprite.angle = 0;
       }
-      g.sprite.setScale(PIXEL_SCALE);
+      g.sprite.setScale(g.baseScale);
     } else {
-      g.sprite.y = -2; g.sprite.x = 0; g.sprite.angle = 0; g.sprite.setScale(PIXEL_SCALE);
+      g.sprite.y = -2; g.sprite.x = 0; g.sprite.angle = 0; g.sprite.setScale(g.baseScale);
     }
 
     const unitPalette = paletteFor(u.def.age);
@@ -1216,8 +1227,11 @@ export class GameScene extends Phaser.Scene {
           60,
         );
         if (ev.side === 'ai') {
-          audio.sfxEvolve();
-          if (this.textures.exists(baseKey(ev.to, 'ai'))) this.aiBase.setTexture(baseKey(ev.to, 'ai'));
+          if (this.textures.exists(baseKey(ev.to, 'ai'))) {
+            this.aiBase.setTexture(baseKey(ev.to, 'ai'));
+            const baseFit = BASE_FIT[ev.to].ai;
+            this.aiBase.setScale((baseFit.h * PIXEL_SCALE) / (this.aiBase.height || baseFit.h));
+          }
           this.aiFlag.setTexture(`flag_${ev.to}_ai`);
           this.aiFlag.setFlipX(true);
         } else {

@@ -33,9 +33,9 @@ import type { Age } from '../src/sim/types';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Sky band size in authored pixels; drawn at PIXEL_SCALE (2x) => 960x286. */
-export const BACKDROP_W = 480;
-export const BACKDROP_H = 143;
+/** Sky band size in authored pixels; drawn 1:1 => 960x286. */
+export const BACKDROP_W = 960;
+export const BACKDROP_H = 286;
 
 interface AgeRecipe {
   source: string;
@@ -132,11 +132,9 @@ export function buildBackdrop(age: Age): Raster {
       g = (g + (dark[1] - g) * recipe.tint) * recipe.gain * falloff;
       b = (b + (dark[2] - b) * recipe.tint) * recipe.gain * falloff;
 
-      const d = (BAYER4[y & 3]![x & 3]! / 15 - 0.5) * 22 * recipe.dither;
-      const [pr, pg, pb] = palette[nearestColor(clamp255(r + d), clamp255(g + d), clamp255(b + d), palette)]!;
-      out[i] = pr;
-      out[i + 1] = pg;
-      out[i + 2] = pb;
+      out[i] = clamp255(Math.round(r));
+      out[i + 1] = clamp255(Math.round(g));
+      out[i + 2] = clamp255(Math.round(b));
       out[i + 3] = 255;
     }
   }
@@ -166,7 +164,7 @@ function main(): void {
     const raster = buildBackdrop(age);
     const outPath = join(ROOT, 'public', 'atlas', `bg_${age}.png`);
     writeFileSync(outPath, encodePng(raster.width, raster.height, raster.data));
-    const preview = upscale2x(raster);
+    const preview = raster;
     writeFileSync(join(ROOT, 'art', 'preview', `bg_${age}@2x.png`), encodePng(preview.width, preview.height, preview.data));
     const kb = (readFileSync(outPath).length / 1024).toFixed(1);
     console.log(`bg_${age}.png  ${raster.width}x${raster.height}  ${kb} KB`);

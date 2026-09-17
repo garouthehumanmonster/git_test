@@ -3,12 +3,16 @@ import { generateTextures } from './textures';
 import { crazyLoadingStop, crazyLoadData } from '../crazygames';
 import { CAMPAIGN_STORAGE_KEY, loadProgress, mergeProgress, saveProgress } from '../campaign';
 
+import { unitKey } from './unitart';
+import { baseKey } from './basearth';
+
 const AGES = ['stone', 'medieval', 'modern'] as const;
+const ROLES = ['swarm', 'tank', 'ranged'] as const;
+const SIDES = ['player', 'ai'] as const;
 
 /**
- * Loads the only raster assets in the project — the four painted age
- * panoramas, pre-graded offline onto the game's landscape palette by
- * `npm run art:build`. Everything else is generated procedurally.
+ * Preloads the high-resolution raster backdrops, units, and base towers.
+ * Procedural fallback textures are populated in create() for any missing assets.
  */
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -19,6 +23,14 @@ export class BootScene extends Phaser.Scene {
     const base = import.meta.env.BASE_URL ?? './';
     for (const age of AGES) {
       this.load.image(`bg_${age}`, `${base}atlas/bg_${age}.png`);
+      for (const role of ROLES) {
+        for (const side of SIDES) {
+          this.load.image(unitKey(age, role, side), `${base}atlas/units/unit_${age}_${role}_${side}.png`);
+        }
+      }
+      for (const side of SIDES) {
+        this.load.image(baseKey(age, side), `${base}atlas/bases/base_${age}_${side}.png`);
+      }
     }
   }
 

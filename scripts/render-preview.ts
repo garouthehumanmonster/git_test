@@ -105,8 +105,8 @@ function renderScene(age: Age): SoftGfx {
   const pal = paletteFor(age);
   fill(g, 0, 0, LANE_WIDTH, LANE_HEIGHT, pal.panel);
 
-  // 1. Painted sky band (authored 480x143, drawn at PIXEL_SCALE => 960 wide).
-  blit(g, buildBackdrop(age), 0, 0, PIXEL_SCALE);
+  // 1. Painted sky band (960x286 drawn 1:1).
+  blit(g, buildBackdrop(age), 0, 0, 1);
 
   // 2. Horizon silhouettes, sitting inside the painted band.
   const props = AGE_PROPS[age];

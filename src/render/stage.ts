@@ -6,9 +6,9 @@ import { FORE_BOTTOM, SKY_HEIGHT, laneGroundY, paintLane } from './laneart';
 
 export { laneGroundY, FORE_BOTTOM, SKY_HEIGHT };
 
-/** Authored backdrop size; drawn at PIXEL_SCALE so it fills the 960px sky band. */
-export const BACKDROP_W = 480;
-export const BACKDROP_H = 143;
+/** Authored backdrop size; 960x286 drawn 1:1 to fill the sky band. */
+export const BACKDROP_W = 960;
+export const BACKDROP_H = 286;
 
 interface PropInstance {
   img: Phaser.GameObjects.Image;
@@ -72,7 +72,7 @@ export class Stage {
       g.generateTexture(key, BACKDROP_W, BACKDROP_H);
       g.destroy();
     }
-    this.sky = this.scene.add.image(0, 0, key).setOrigin(0, 0).setScale(PIXEL_SCALE).setDepth(-12);
+    this.sky = this.scene.add.image(0, 0, key).setOrigin(0, 0).setScale(1).setDepth(-12);
 
     this.lane = this.scene.add.graphics().setDepth(0);
     this.drawLane(pal);
