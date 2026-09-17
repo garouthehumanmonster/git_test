@@ -26,9 +26,12 @@ import {
   canSpawn,
   canUpgrade,
   createInitialState,
+  endReasonLabel,
+  reinforceBlockReason,
+  reinforceCostFor,
   tick,
 } from '../sim/sim';
-import { type ResultsPayload, baseHpRatio, recordResult, stageById, starRating, STAGES, saveProgress, loadProgress } from '../campaign';
+import { type MatchOutcome, type ResultsPayload, baseHpRatio, recordResult, stageById, starRating, STAGES, saveProgress, loadProgress } from '../campaign';
 import { FX_ORIGIN, TURRET_FIT, TURRET_SILL, turretKey } from './turretart';
 import { Hud } from './Hud';
 import { UNIT_FIT, unitKey } from './unitart';
@@ -301,6 +304,7 @@ export class GameScene extends Phaser.Scene {
     this.hud.onTurretRequest = () => this.tryTurret();
     this.hud.onUltimateRequest = () => this.tryUltimate();
     this.hud.onChronoSurgeRequest = () => this.tryChronoSurge();
+    this.hud.onReinforceRequest = () => this.tryReinforce();
     this.hud.onRewardedAdRequest = () => {
       if (this.rewardInFlight || this.sim.result !== 'playing') return;
       this.rewardInFlight = true;
@@ -368,7 +372,8 @@ export class GameScene extends Phaser.Scene {
       if (e.key === 'f' || e.key === 'F') { this.toggleFullscreen(); return; }
       if (this.sim.result !== 'playing') {
         if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-          if (this.sim.result === 'win' && this.stageId > 0 && this.stageId < STAGES.length) this.gotoStage(this.stageId + 1);
+          const cleared = this.sim.result === 'win' || this.sim.result === 'draw';
+          if (cleared && this.stageId > 0 && this.stageId < STAGES.length) this.gotoStage(this.stageId + 1);
           else safeRestart();
         } else if (e.code === 'Space' || e.key === 'r' || e.key === 'R') safeRestart();
         else if (e.key === 'm' || e.key === 'M') handleMuteKey();
@@ -383,6 +388,8 @@ export class GameScene extends Phaser.Scene {
       else if (e.key === 't' || e.key === 'T') this.tryTurret();
       else if (e.key === 'q' || e.key === 'Q') this.tryChronoSurge();
       else if (e.key === 'w' || e.key === 'W') this.tryWarCry();
+      // C, not R: R is already the results-card restart.
+      else if (e.key === 'c' || e.key === 'C') this.tryReinforce();
       else if (e.key === 'm' || e.key === 'M') handleMuteKey();
       // Space is the superweapon: it is the one action worth a fat hotkey.
       else if (e.key === ' ') this.tryUltimate();
@@ -554,6 +561,26 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.pendingIntents.push({ type: 'warCry', side: 'player' });
+  }
+
+  /**
+   * Buy a reinforcement call-up. Every refusal is explained, because a silent
+   * no-op on a 300-gold button reads as a broken button.
+   */
+  private tryReinforce(): void {
+    if (this.sim.result !== 'playing') return;
+    const reason = reinforceBlockReason(this.sim, 'player');
+    if (reason) {
+      audio.sfxError();
+      this.hud.announce('CALL-UP UNAVAILABLE', reason, 1400);
+      this.hud.shakeReinforce();
+      return;
+    }
+    this.pendingIntents.push({ type: 'reinforce', side: 'player' });
+    const cost = reinforceCostFor(this.sim, 'player');
+    audio.sfxEvolve();
+    voice.play('reinforcements');
+    this.hud.announce('REINFORCEMENTS', `${cost}G committed - squad inbound`, 1500);
   }
 
   /**
@@ -757,8 +784,22 @@ export class GameScene extends Phaser.Scene {
    */
   private onMatchEnd(): void {
     const win = this.sim.result === 'win';
+    const draw = this.sim.result === 'draw';
     audio.setMusicState(win ? 'win' : 'lose');
     crazyGameplayStop();
+    if (draw) {
+      // A collapse draw is neither a fanfare nor a funeral: the timeline tore
+      // itself apart with both commanders still standing.
+      audio.sfxCollapse();
+      voice.play('collapse');
+      this.cameras.main.flash(260, 180, 180, 200, false);
+      this.shake(500, 8);
+      window.setTimeout(() => {
+        if (!this.scene.isActive()) return;
+        this.showResults();
+      }, 700);
+      return;
+    }
     if (win) {
       audio.sfxVictory();
       voice.play('victory');
@@ -787,17 +828,20 @@ export class GameScene extends Phaser.Scene {
     const stats = this.sim.stats;
     const summary = {
       stageId: this.stageId,
-      result: (this.sim.result === 'win' ? 'win' : 'loss') as 'win' | 'loss',
+      result: (this.sim.result === 'playing' ? 'loss' : this.sim.result) as MatchOutcome,
       // Sim time, not wall clock: speed toggles and pauses must not inflate it.
       elapsedMs: this.sim.tick * TICK_MS,
       unitsSpawned: stats.unitsSpawned.player,
       enemiesDestroyed: stats.kills.player,
       unitsLost: stats.unitsLost.player,
       baseHpRatio: baseHpRatio(Math.max(0, this.sim.player.baseHp)),
+      // Honest one-liner: "Collapse tiebreak: base damage", never a fake base kill.
+      reason: endReasonLabel(this.sim),
     };
     const payload: ResultsPayload = this.stageId === 0
       ? { ...summary, stars: starRating(summary.result, summary.baseHpRatio), isBest: false, hasNextStage: false }
       : recordResult(summary);
+    // A draw was not a defeat, so there is nothing to revive from.
     const canRevive = this.sim.result === 'loss' && !this.revivedThisMatch && !crazyHasAdblock();
     this.hud.showResults(payload, canRevive);
   }
@@ -808,6 +852,9 @@ export class GameScene extends Phaser.Scene {
       () => {
         this.revivedThisMatch = true;
         this.sim.result = 'playing';
+        // The previous verdict no longer applies; the match decides again.
+        this.sim.endReason = undefined;
+        this.sim.endHpSnapshot = undefined;
         this.sim.player.baseHp = Math.floor(BASE_HP * 0.35);
         this.resultsShown = false;
         this.hud.resetGameOver();
@@ -1254,14 +1301,14 @@ export class GameScene extends Phaser.Scene {
         }
       } else if (ev.kind === 'chronoSurge') {
         const isPlayer = ev.side === 'player';
-        this.hud.announce('TIME WARP', isPlayer ? 'CHRONO STASIS ACTIVATED!' : 'ENEMY WARPED TIME!', 1800);
+        this.hud.announce('TIME WARP', isPlayer ? 'CHRONO STASIS ACTIVATED!' : 'ENEMY WARPED TIME!', 1800, 'important');
         this.shake(350, 5);
         audio.sfxChronoSurge();
         if (isPlayer) voice.play('chrono_surge');
         this.cameras.main.flash(200, 100, 220, 255, false);
       } else if (ev.kind === 'warCry') {
         const isPlayer = ev.side === 'player';
-        this.hud.announce('WAR CRY', isPlayer ? 'ALL UNITS RALLY (+25% SPD)!' : 'ENEMY WAR CRY!', 1800);
+        this.hud.announce('WAR CRY', isPlayer ? 'ALL UNITS RALLY (+25% SPD)!' : 'ENEMY WAR CRY!', 1800, 'important');
         this.shake(250, 4);
         audio.sfxWarCry();
         if (isPlayer) voice.play('war_cry');
@@ -1293,14 +1340,20 @@ export class GameScene extends Phaser.Scene {
         if (ev.side === 'player' && ev.rank === 1) voice.play('turret_online');
       } else if (ev.kind === 'ultCast') {
         const cp = paletteFor(ev.age);
-        this.hud.announce(ULT_DEFS[ev.age].label.toUpperCase(), ev.side === 'player' ? 'incoming' : 'brace!', 1400);
+        this.hud.announce(ULT_DEFS[ev.age].label.toUpperCase(), ev.side === 'player' ? 'incoming' : 'brace!', 1400, 'important');
         this.addFloat(ev.x, LANE_BOTTOM - 30, ev.strike === 'meteor' ? 'METEOR STRIKE' : ev.strike === 'volley' ? 'RAIN OF FIRE' : 'AIRSTRIKE', cp.light, 54);
         this.shake(300, 6);
         audio.sfxEvolve();
       } else if (ev.kind === 'strike') {
         this.impactStrikeFx(ev.strike, ev.x, ev.y, ev.radius, ev.side);
+      } else if (ev.kind === 'reinforce') {
+        const rp = paletteFor(ev.age);
+        this.addFloat(PLAYER_BASE_X + 60, LANE_TOP + 30, `+${ev.roles.length} REINFORCEMENTS`, rp.highlight, 56);
+        this.dust.setParticleTint(rp.accent);
+        this.dust.emitParticleAt(PLAYER_BASE_X + 40, LANE_BOTTOM - 60, 12);
+        if (ev.side === 'player') { audio.sfxGold(); this.shake(180, 3); }
       } else if (ev.kind === 'collapse') {
-        this.hud.announce('TIMELINE COLLAPSE', 'both bases are decaying - finish it', 3000);
+        this.hud.announce('TIMELINE COLLAPSE', 'both bases are decaying - finish it', 3000, 'important');
         this.shake(900, 7);
         audio.sfxCollapse();
         voice.play('collapse');

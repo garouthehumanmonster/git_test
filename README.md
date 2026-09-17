@@ -25,7 +25,8 @@ turret/superweapon HUD icons, at the exact scale they appear in play:
 - **Orders Of Battle That Read**: units take a lane rank from their id (`(id % 5 - 2) * 12`), only three melee fighters per side may engage one target, and everyone queued behind them holds a 16-24px following distance. Armies fight as formations, never as one-pixel mosh pits.
 - **Base Defence Turrets**: buy one from the HUD and upgrade it twice. Stone slingshot, Medieval ballista volley, Modern twin flak — each auto-targets the nearest enemy inside 250px of your tower.
 - **Age Superweapons**: one ultimate meter per side, charged by time and by kills. Fire Meteor Strike, Rain of Fire or an Airstrike with `Space` or the HUD button.
-- **A Lane That Actually Resolves**: numbers push the clash line forward, a breached front sieges the tower, and after four minutes the timeline collapses — draining both bases so a dead-even match still produces a winner.
+- **A Lane That Actually Resolves**: numbers push the clash line forward, a breached front sieges the tower, and after four minutes the timeline collapses — draining both bases so a dead-even match still produces a winner. When collapse takes both bases on the same tick the match is settled by a documented tiebreak (base HP → net base damage → kills → an honest **draw**), never by an automatic defeat. See [`docs/COLLAPSE_AND_PACING.md`](docs/COLLAPSE_AND_PACING.md).
+- **Reinforcement Call-up**: the late-game gold sink. A mixed 3-unit squad for escalating gold, capped at four call-ups a match, on a 15s cooldown (`C` or the HUD button).
 - **Puppet Animation**: walk cycles (bob, lean, per-unit phase), lunge attacks with swing arcs, muzzle flashes and ground shocks, 60ms white hit flashes with micro knockback, and deaths that burst red, topple 90° and fade in 250ms. Health bars appear only when a unit is wounded or hovered.
 - **Pure Deterministic Simulation**: Decoupled fixed-step tick loop (50ms) driven by a 32-bit Mulberry32 PRNG. Zero DOM or Phaser dependencies inside `src/sim/`. Netplay and replay ready.
 - **Three Civilizations & Strict Counter Triangle**:
@@ -65,6 +66,7 @@ npm run art:preview # software-render the scene to docs/*.png (no browser needed
 | `Y` | **Armor Upgrade** | Increases army health pool by +15% per rank |
 | `E` | **Evolve Age** | Advances civilization (Stone → Medieval → Modern) |
 | `T` | **Build / Upgrade Turret** | One base-defence turret, three ranks, auto-firing |
+| `C` | **Reinforcement Call-up** | Buys a mixed 3-unit squad at the base. Cost escalates per purchase, capped at 4 per match, 15s cooldown |
 | `Space` | **Superweapon** | Fires the age's ultimate once the meter is full |
 | `X` | **Cycle Speed** | Toggles 1× / 2× / 3× game speed |
 | `Enter` | **Next Level** | Opens the next campaign stage on the results card |

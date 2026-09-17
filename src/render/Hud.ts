@@ -16,15 +16,19 @@ import {
   AI_BASE_X,
   MAX_TURRET_RANK,
   MAX_UPGRADE_RANK,
+  REINFORCE_COOLDOWN_TICKS,
+  REINFORCE_MAX_PURCHASES,
   ROLE_HOTKEY,
   ULT_DEFS,
   ULT_MAX,
   CHRONO_MAX,
   UNIT_DEFS,
+  reinforceCost,
 } from '../sim/types';
 import { colorHex } from './palette';
 import { PIXEL_SCALE } from './palette';
 import { crazyHasAdblock } from '../crazygames';
+import { ToastQueue, type ToastPriority } from './toastQueue';
 
 // ---------------- per-age UI theme ----------------
 interface Theme {
@@ -118,6 +122,7 @@ export class Hud {
   onTurretRequest?: () => void;
   onUltimateRequest?: () => void;
   onChronoSurgeRequest?: () => void;
+  onReinforceRequest?: () => void;
   onNextStageRequest?: () => void;
   onMenuRequest?: () => void;
 
@@ -183,7 +188,20 @@ export class Hud {
     frame: Phaser.GameObjects.Graphics;
     pulse: number;
   };
+  private reinforceBtn!: {
+    bg: Phaser.GameObjects.Rectangle;
+    icon: Phaser.GameObjects.Image;
+    label: Phaser.GameObjects.Text;
+    cost: Phaser.GameObjects.Text;
+    hotkey: Phaser.GameObjects.Text;
+    pips: Phaser.GameObjects.Rectangle[];
+    cd: Phaser.GameObjects.Rectangle;
+    frame: Phaser.GameObjects.Graphics;
+  };
   private collapseBanner!: Phaser.GameObjects.Container;
+  /** Announcements go through a bounded FIFO queue so they never overlap. */
+  private toasts = new ToastQueue(3);
+  private toastBanner?: Phaser.GameObjects.Container;
   private gameOverGroup?: Phaser.GameObjects.Container;
   private pauseOverlay?: Phaser.GameObjects.Container;
   private speedBtn!: Phaser.GameObjects.Text;
@@ -198,7 +216,8 @@ export class Hud {
   static readonly BTN_W = 124;
   static readonly BTN_H = 66;
   static readonly UPG_BTN_W = 88;
-  static readonly EVOLVE_BTN_W = 108;
+  static readonly EVOLVE_BTN_W = 98;
+  static readonly REINFORCE_BTN_W = 88;
   static readonly TURRET_BTN_W = 96;
   static readonly ULT_BTN_W = 100;
   static readonly PANEL_Y = PANEL_Y;
@@ -303,10 +322,11 @@ export class Hud {
 
     // Action bar
     const roles: UnitRole[] = ['swarm', 'tank', 'ranged'];
-    const btnW = 114, btnH = Hud.BTN_H, upgW = 76;
-    const turretW = 84, ultW = 88, chronoW = 92;
+    const btnW = 106, btnH = Hud.BTN_H, upgW = 72;
+    const turretW = 78, ultW = 82, chronoW = 86;
     const gap = 5;
-    const totalW = btnW * 3 + upgW * 2 + turretW + ultW + chronoW + Hud.EVOLVE_BTN_W + gap * 8;
+    const totalW = btnW * 3 + upgW * 2 + turretW + ultW + chronoW
+      + Hud.REINFORCE_BTN_W + Hud.EVOLVE_BTN_W + gap * 9;
     let x = (w - totalW) / 2 + btnW / 2;
     const y = PANEL_Y + Math.round((LANE_HEIGHT - PANEL_Y) / 2);
     for (const role of roles) {
@@ -319,6 +339,8 @@ export class Hud {
     x += upgW + gap;
     this.makeTurretButton(x, y, turretW, btnH);
     x += turretW + gap;
+    this.makeReinforceButton(x, y, Hud.REINFORCE_BTN_W, btnH);
+    x += Hud.REINFORCE_BTN_W + gap;
     this.makeUltimateButton(x, y, ultW, btnH);
     x += ultW + gap;
     this.makeChronoButton(x, y, chronoW, btnH);
@@ -522,6 +544,41 @@ export class Hud {
     this.turretBtn = { bg, icon, label, cost, hotkey, pips, frame };
   }
 
+  /**
+   * Reinforcement call-up: the late-game gold sink. Escalating cost, a hard
+   * per-match cap shown as pips, and a cooldown bar — so the player can see at
+   * a glance whether the 300 gold in the corner can actually be spent here.
+   */
+  private makeReinforceButton(x: number, y: number, w: number, h: number): void {
+    const s = this.scene;
+    const frame = s.add.graphics().setDepth(10);
+    const bg = s.add.rectangle(x, y, w - 6, h - 6, 0x171009).setOrigin(0.5).setDepth(11).setInteractive({ useHandCursor: true });
+    const icon = s.add.image(x - w / 2 + 20, y, 'portrait_stone_swarm')
+      .setOrigin(0.5).setScale(PIXEL_SCALE * 0.8).setDepth(12);
+    const label = s.add.text(x + 6, y - h / 2 + 8, 'CALL-UP', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#ffe0b0', fontStyle: 'bold',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(0.5, 0).setDepth(12);
+    const cost = s.add.text(x + 6, y - h / 2 + 22, '', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#f4c85b',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(0.5, 0).setDepth(12);
+    const hotkey = s.add.text(x + w / 2 - 8, y - h / 2 + 7, 'C', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#ffd166', fontStyle: 'bold',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(1, 0).setDepth(12);
+    const pips: Phaser.GameObjects.Rectangle[] = [];
+    for (let i = 0; i < REINFORCE_MAX_PURCHASES; i++) {
+      pips.push(s.add.rectangle(x - 18 + i * 12, y + 20, 8, 4, 0x2b1e12).setDepth(12).setOrigin(0.5));
+    }
+    const cd = s.add.rectangle(x - w / 2 + 3, y - h / 2 + 3, 0, h - 6, 0x171009, 0.62)
+      .setOrigin(0, 0).setDepth(13).setVisible(false);
+    bg.on('pointerdown', () => this.onReinforceRequest?.());
+    bg.on('pointerover', () => bg.setFillStyle(0x2b1e12));
+    bg.on('pointerout', () => bg.setFillStyle(0x171009));
+    this.reinforceBtn = { bg, icon, label, cost, hotkey, pips, cd, frame };
+  }
+
   /** Shared ultimate meter: charges with time and kills, fires the age's superweapon. */
   private makeUltimateButton(x: number, y: number, w: number, h: number): void {
     const s = this.scene;
@@ -615,6 +672,12 @@ export class Hud {
     this.nudge([btn.bg, btn.icon, btn.label, btn.cost, btn.hotkey, btn.stats]);
   }
 
+  shakeReinforce(): void {
+    const btn = this.reinforceBtn;
+    if (!btn) return;
+    this.nudge([btn.bg, btn.icon, btn.label, btn.cost, btn.hotkey, ...btn.pips]);
+  }
+
   shakeUpgrade(which: 'forge' | 'armor'): void {
     const btn = this.upgradeBtns[which];
     if (!btn) return;
@@ -689,6 +752,7 @@ export class Hud {
   // ------------------------------------------------------------------ update
 
   update(state: SimState, canEvolveNow: boolean): void {
+    this.pumpToasts();
     const p = state.player;
     const theme = THEMES[p.age];
     if (theme !== THEMES[this.currentTheme]) {
@@ -863,6 +927,38 @@ export class Hud {
       btn.pips.forEach((pip, i) => pip.setFillStyle(i < p.turret.rank ? theme.gold : theme.panelLight));
     }
 
+    // Reinforcement call-up: cost escalates with every purchase, capped and cooled.
+    {
+      const btn = this.reinforceBtn;
+      const used = p.reinforceUsed ?? 0;
+      const maxed = used >= REINFORCE_MAX_PURCHASES;
+      const cost = maxed ? 0 : reinforceCost(p.age, used);
+      const cdTicks = p.reinforceCooldown ?? 0;
+      const cooling = cdTicks > 0;
+      const affordable = !maxed && !cooling && p.gold >= cost && state.result === 'playing';
+      this.drawBtnFrame(
+        btn.frame,
+        btn.bg.x - btn.bg.width / 2, btn.bg.y - btn.bg.height / 2,
+        btn.bg.width, btn.bg.height,
+        { ...theme, btnReady: theme.gold, btnLocked: theme.panelDark, borderGlow: theme.gold },
+        affordable,
+      );
+      btn.bg.setFillStyle(affordable ? theme.panel : theme.panelDark);
+      btn.icon.setTexture(`portrait_${p.age}_swarm`);
+      btn.icon.setAlpha(affordable ? 1 : 0.45);
+      btn.label.setColor(maxed ? colorHex(theme.gold) : affordable ? theme.accentText : colorHex(theme.mid));
+      btn.label.setText(maxed ? 'MAX CALL-UPS' : 'CALL-UP');
+      btn.cost.setText(maxed ? 'CAPPED' : cooling ? `${Math.ceil(cdTicks / 20)}s` : `${cost} G`);
+      btn.cost.setColor(maxed ? colorHex(theme.gold) : affordable ? colorHex(theme.gold) : colorHex(theme.edge));
+      btn.bg.setInteractive({ useHandCursor: affordable });
+      btn.pips.forEach((pip, i) => pip.setFillStyle(i < used ? theme.gold : theme.panelLight));
+      // Cooldown sweep, same language as the spawn buttons use.
+      btn.cd.setVisible(cooling);
+      if (cooling) btn.cd.width = (btn.bg.width - 6) * Math.min(1, cdTicks / REINFORCE_COOLDOWN_TICKS);
+      // Same affordance the other ready buttons use: a soft breathing glow.
+      btn.bg.setAlpha(affordable ? 0.86 + Math.sin(this.scene.time.now / 260) * 0.14 : 1);
+    }
+
     // Ultimate meter: fills with time and kills.
     {
       const btn = this.ultBtn;
@@ -922,7 +1018,9 @@ export class Hud {
     if (state.result !== 'playing') {
       this.subtitle.setText(state.result === 'win'
         ? 'VICTORY - timeline secured  |  SPACE to play again'
-        : 'DEFEAT - timeline lost  |  SPACE to retry');
+        : state.result === 'draw'
+          ? 'DRAW - the timeline tore itself apart  |  SPACE to play again'
+          : 'DEFEAT - timeline lost  |  SPACE to retry');
     } else if (p.spawnLockTicks > 0) {
       this.subtitle.setText('Deploying...');
     } else if (p.age === 'stone' && p.xp >= EVOLVE_XP_REQ.medieval) {
@@ -934,7 +1032,7 @@ export class Hud {
       if ((p.rallyTicks ?? 0) > 0) this.subtitle.setText(`WAR CRY ACTIVE (+25% SPEED) | ${Math.ceil((p.rallyTicks ?? 0) * 0.05)}s`);
       else if (enemies > 8) this.subtitle.setText('ALERT  |  enemy massing - W War Cry / Q Time Warp');
       else if (enemies === 0) this.subtitle.setText('PUSH  |  lane clear - send the swarm');
-      else this.subtitle.setText('Deploy 1/2/3 | W War Cry | Q Warp | SPC Ult | U/Y upgrade | E evolve');
+      else this.subtitle.setText('Deploy 1/2/3 | C Call-up | W War Cry | Q Warp | SPC Ult | U/Y upgrade | E evolve');
     }
   }
 
@@ -947,13 +1045,16 @@ export class Hud {
     const s = this.scene;
     const theme = THEMES[this.currentTheme];
     const win = payload.result === 'win';
+    const draw = payload.result === 'draw';
+    const cleared = win || draw;
+    const headline = win ? 'VICTORY' : draw ? 'DRAW' : 'DEFEAT';
     const c = s.add.container(LANE_WIDTH / 2, 250).setDepth(50);
 
     const bg = s.add.rectangle(0, 0, 560, 240, theme.panelDark, 0.96)
-      .setStrokeStyle(3, win ? theme.gold : theme.borderGlow);
-    const t1 = s.add.text(0, -84, win ? 'VICTORY' : 'DEFEAT', {
+      .setStrokeStyle(3, win ? theme.gold : draw ? theme.hpPlayer : theme.borderGlow);
+    const t1 = s.add.text(0, -84, headline, {
       fontFamily: 'monospace', fontSize: '36px',
-      color: win ? '#f4c85b' : theme.accentText,
+      color: win ? '#f4c85b' : draw ? '#8ef0b0' : theme.accentText,
       fontStyle: 'bold', stroke: theme.outline, strokeThickness: 6,
     }).setOrigin(0.5);
 
@@ -982,13 +1083,16 @@ export class Hud {
 
     const decoKey = `ui_${win ? 'victory' : 'defeat'}_${this.currentTheme}`;
     if (s.textures.exists(decoKey)) {
-      const img = s.add.image(0, -6, decoKey).setOrigin(0.5).setScale(PIXEL_SCALE * 0.8).setAlpha(0.9);
+      // Pushed up and dimmed: the card now carries six rows, so the crest sits
+      // behind them instead of on top of them.
+      const img = s.add.image(0, -14, decoKey).setOrigin(0.5).setScale(PIXEL_SCALE * 0.7).setAlpha(0.55);
       c.add(img);
     }
 
     const mm = Math.floor(payload.elapsedMs / 60000);
     const ss = Math.floor((payload.elapsedMs % 60000) / 1000).toString().padStart(2, '0');
     const rows = [
+      ['OUTCOME', payload.reason || (win ? 'Enemy base destroyed' : draw ? 'Timeline Collapse: draw' : 'Your base was destroyed')],
       ['CLEAR TIME', `${mm}:${ss}${payload.isBest ? '  (BEST)' : ''}`],
       ['UNITS SPAWNED', `${payload.unitsSpawned}`],
       ['ENEMIES DESTROYED', `${payload.enemiesDestroyed}`],
@@ -997,7 +1101,7 @@ export class Hud {
     ];
     const rowObjs: Phaser.GameObjects.GameObject[] = [];
     rows.forEach(([label, value], i) => {
-      const y = 6 + i * 19;
+      const y = -6 + i * 16;
       rowObjs.push(s.add.text(-262, y, label, {
         fontFamily: 'monospace', fontSize: '13px', color: colorHex(theme.mid),
         stroke: theme.outline, strokeThickness: 3,
@@ -1024,10 +1128,11 @@ export class Hud {
     };
 
     const buttons: Phaser.GameObjects.GameObject[] = [];
-    if (payload.hasNextStage && win) {
-      buttons.push(...mkBtn(-90, 'NEXT LEVEL', true, () => this.onNextStageRequest?.()));
+    if (payload.hasNextStage && cleared) {
+      // A draw still counts as surviving the stage, so the campaign moves on.
+      buttons.push(...mkBtn(-90, draw ? 'CONTINUE' : 'NEXT LEVEL', true, () => this.onNextStageRequest?.()));
       buttons.push(...mkBtn(90, 'RETRY', false, () => this.onRestartRequest?.()));
-    } else if (win) {
+    } else if (cleared) {
       // Final stage cleared, or an endless run won.
       buttons.push(...mkBtn(-90, 'PLAY AGAIN', true, () => this.onRestartRequest?.()));
       buttons.push(...mkBtn(90, 'STAGE MAP', false, () => this.onMenuRequest?.()));
@@ -1037,7 +1142,7 @@ export class Hud {
     } else {
       buttons.push(...mkBtn(0, 'RETRY', true, () => this.onRestartRequest?.()));
     }
-    const hint = s.add.text(0, 126, win ? 'Press ENTER for the next level' : (canRevive && this.onReviveRequest) ? 'Revive to keep fighting, or RETRY' : 'Press ENTER to retry', {
+    const hint = s.add.text(0, 126, cleared ? 'Press ENTER for the next level' : (canRevive && this.onReviveRequest) ? 'Revive to keep fighting, or RETRY' : 'Press ENTER to retry', {
       fontFamily: 'monospace', fontSize: '11px', color: colorHex(theme.body),
       stroke: theme.outline, strokeThickness: 3,
     }).setOrigin(0.5);
@@ -1048,8 +1153,37 @@ export class Hud {
     s.tweens.add({ targets: c, scaleX: 1, scaleY: 1, alpha: 1, duration: 350, ease: 'Back.easeOut' });
   }
 
-  /** Compact banner used by the campaign for stage titles. */
-  announce(text: string, sub = '', ms = 2200): void {
+  /**
+   * Queue a top-centre announcement. Only one is ever on screen: a Chrono Warp,
+   * an incoming superweapon and the collapse warning used to be drawn on top of
+   * each other at the same coordinates and became unreadable.
+   *
+   * `important` alerts jump ahead of routine ones and evict them when the queue
+   * is full, so the collapse warning is never lost behind an upgrade banner.
+   */
+  announce(text: string, sub = '', ms = 2200, priority: ToastPriority = 'normal'): void {
+    this.toasts.push({ id: text, title: text, sub, ms, priority });
+  }
+
+  /** Drain the toast queue into at most one banner. Called every frame. */
+  private pumpToasts(): void {
+    const ev = this.toasts.update(this.scene.time.now);
+    if (ev.hide && this.toastBanner) {
+      const dying = this.toastBanner;
+      this.toastBanner = undefined;
+      this.scene.tweens.add({
+        targets: dying, alpha: 0, duration: 220,
+        onComplete: () => dying.destroy(),
+      });
+    }
+    if (ev.show) {
+      if (this.toastBanner) this.toastBanner.destroy();
+      this.toastBanner = this.buildToast(ev.show.title, ev.show.sub);
+    }
+  }
+
+  /** The banner itself — same pixel language as the old ad-hoc version. */
+  private buildToast(text: string, sub: string): Phaser.GameObjects.Container {
     const s = this.scene;
     const theme = THEMES[this.currentTheme];
     const c = s.add.container(LANE_WIDTH / 2, 168).setDepth(45);
@@ -1068,10 +1202,7 @@ export class Hud {
     }
     c.setAlpha(0).setScale(0.85);
     s.tweens.add({ targets: c, alpha: 1, scaleX: 1, scaleY: 1, duration: 220, ease: 'Back.easeOut' });
-    s.tweens.add({
-      targets: c, alpha: 0, delay: ms, duration: 300,
-      onComplete: () => c.destroy(),
-    });
+    return c;
   }
 
   setBonusButtonVisible(visible: boolean): void {
@@ -1080,6 +1211,10 @@ export class Hud {
 
   resetGameOver(): void {
     if (this.gameOverGroup) { this.gameOverGroup.destroy(); this.gameOverGroup = undefined; }
+    // Stale alerts from the previous match must not follow the player into the
+    // next one.
+    this.toasts.clear();
+    if (this.toastBanner) { this.toastBanner.destroy(); this.toastBanner = undefined; }
     if (this.pauseOverlay) { this.pauseOverlay.destroy(); this.pauseOverlay = undefined; }
     for (const b of this.buttons) b.cd.setVisible(false);
     this.setPaused(false, 1);

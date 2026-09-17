@@ -96,6 +96,13 @@ export interface PlayerState {
   rallyTicks?: number;
   /** Cooldown ticks until War Cry can be used again. */
   rallyCooldown?: number;
+  /**
+   * Reinforcement call-ups purchased so far this match. Capped at
+   * `REINFORCE_MAX_PURCHASES` so the gold sink has a hard ceiling.
+   */
+  reinforceUsed?: number;
+  /** Ticks until another reinforcement call-up can be bought. */
+  reinforceCooldown?: number;
 }
 
 export interface TurretState {
@@ -144,7 +151,35 @@ export interface MatchStats {
   turretKills: Record<Side, number>;
   ultimatesUsed: Record<Side, number>;
   goldEarned: Record<Side, number>;
+  /**
+   * Siege damage this side's units dealt to the ENEMY base. This is the
+   * authoritative "who actually broke through" number, and it is the primary
+   * combat-performance tiebreaker when both bases fall on the same tick.
+   * Tracked in the sim (not the renderer) so it survives a replay.
+   */
+  baseDamage: Record<Side, number>;
 }
+
+/**
+ * Why the match ended. Persisted on the state so the results screen and the
+ * campaign can describe the outcome honestly instead of guessing from HP.
+ *
+ * - `enemyBaseDestroyed` / `playerBaseDestroyed`: a normal base kill.
+ * - `collapseBaseHp`: both bases hit zero on the same tick; the side with more
+ *   base HP immediately before that tick takes it.
+ * - `collapseBaseDamage`: HP was level too; higher net base damage wins.
+ * - `collapseKills`: damage was level too; higher kill count wins.
+ * - `collapseDraw`: every tiebreaker is level — an honest draw, never a loss.
+ */
+export type EndReason =
+  | 'enemyBaseDestroyed'
+  | 'playerBaseDestroyed'
+  | 'collapseBaseHp'
+  | 'collapseBaseDamage'
+  | 'collapseKills'
+  | 'collapseDraw';
+
+export type MatchResult = 'playing' | 'win' | 'loss' | 'draw';
 
 /**
  * Match-level modifiers. A skirmish is just the identity ruleset; campaign
@@ -209,7 +244,15 @@ export interface SimState {
   player: PlayerState;
   ai: PlayerState;
   nextId: number;
-  result: 'playing' | 'win' | 'loss';
+  result: MatchResult;
+  /** Set exactly once, on the tick the match ends. Null-ish while playing. */
+  endReason?: EndReason;
+  /**
+   * Base HP of each side at the START of the tick that ended the match, i.e.
+   * immediately before any collapse drain or siege hit of that tick landed.
+   * Kept on the state so the tiebreak is auditable after the fact.
+   */
+  endHpSnapshot?: Record<Side, number>;
   rngState: number;
   /** Match modifiers (identity rules for a plain skirmish). */
   rules: MatchRules;
@@ -220,6 +263,11 @@ export interface SimState {
   chronoSurgeSide?: Side | null;
   /** Floating combat text events the renderer can consume and then clear. */
   events: SimEvent[];
+  /**
+   * Last tick either base took siege damage (0 = never). Feeds the attrition
+   * ramp, and it is part of the replayed state so a replay ramps identically.
+   */
+  lastBreakthroughTick: number;
 }
 
 export type SimEvent =
@@ -248,7 +296,9 @@ export type SimEvent =
   | { kind: 'ultCast'; side: Side; age: Age; strike: StrikeKind; x: number; ttl: number }
   /** Announced once when the timeline starts tearing itself apart. */
   | { kind: 'collapse'; ttl: number }
-  | { kind: 'gameover'; result: 'win' | 'loss' };
+  /** A paid reinforcement squad arrived at the base. */
+  | { kind: 'reinforce'; side: Side; age: Age; roles: UnitRole[]; ttl: number }
+  | { kind: 'gameover'; result: Exclude<MatchResult, 'playing'> };
 
 export type Intent =
   | { type: 'spawn'; side: Side; role: UnitRole }
@@ -257,7 +307,8 @@ export type Intent =
   | { type: 'turret'; side: Side }
   | { type: 'ultimate'; side: Side; x: number }
   | { type: 'chronoSurge'; side: Side }
-  | { type: 'warCry'; side: Side };
+  | { type: 'warCry'; side: Side }
+  | { type: 'reinforce'; side: Side };
 
 // --- Lane geometry -----------------------------------------------------------
 // The view is a 6:9 arcade canvas, drawn at exactly 2x one authored pixel:
@@ -423,6 +474,58 @@ export function collapseRate(tick: number): number {
 }
 
 /**
+ * Base-HP differences smaller than this count as a tie for the collapse
+ * tiebreak. Collapse drains both bases by exactly the same amount per tick, so
+ * an even match arrives here at 0.0 vs 0.0 — the epsilon exists to keep
+ * floating-point dust from deciding a match.
+ */
+export const COLLAPSE_HP_TIE_EPSILON = 0.05;
+/** Net base-damage differences smaller than this count as a tie, same reasoning. */
+export const COLLAPSE_DAMAGE_TIE_EPSILON = 0.5;
+
+/*
+ * THE COLLAPSE TIEBREAK HIERARCHY (documented contract, see `resolveMatchEnd`):
+ *
+ *   1. Base HP immediately before the collapse tick  -> `collapseBaseHp`
+ *   2. Net base damage dealt (siege out minus siege taken) -> `collapseBaseDamage`
+ *   3. Kills                                          -> `collapseKills`
+ *   4. Nothing separates them                          -> `collapseDraw`
+ *
+ * A simultaneous zero is NEVER resolved as an automatic loss.
+ */
+
+/*
+ * ATTRITION RAMP (anti-stalemate combat acceleration).
+ *
+ * Profiling a self-play match showed the failure mode precisely: only ~7% of
+ * the field is ever in the 'fight' state, engagements resolve one body at a
+ * time, and no side ever converts a material lead into a push before the
+ * clock runs out. Both armies are fed by the same escalating income, so a
+ * symmetric trade can hold the mid-lane indefinitely.
+ *
+ * The ramp is deliberately NOT a global damage inflation: it is zero until the
+ * match has gone STALEMATE_GRACE_TICKS without either base taking a single
+ * point of siege damage, it resets the moment someone breaks through, and it
+ * is capped. Its job is to make a packed engagement resolve — higher lethality
+ * amplifies whichever side holds the local majority (they wipe the front and
+ * their survivors walk on) instead of both sides trading down to nothing.
+ */
+export const STALEMATE_GRACE_TICKS = 1500; // 75s of clean lane before it arms
+export const STALEMATE_RAMP_PER_1000_TICKS = 0.16;
+export const STALEMATE_MAX_RAMP = 0.7; // hard ceiling: +70% unit damage
+
+/**
+ * Damage multiplier granted by the attrition ramp. `lastBreakthroughTick` is
+ * the last tick either base took siege damage (0 = never yet).
+ */
+export function stalemateRamp(tick: number, lastBreakthroughTick: number): number {
+  const armed = Math.max(STALEMATE_GRACE_TICKS, lastBreakthroughTick);
+  if (tick <= armed) return 0;
+  const over = (tick - armed) / 1000;
+  return Math.min(STALEMATE_MAX_RAMP, over * STALEMATE_RAMP_PER_1000_TICKS);
+}
+
+/**
  * Siege zone. A unit that reaches this close to the enemy base stops trading
  * blows with whatever is left on the lane and starts hitting the structure
  * instead. Without it, a base can only ever be damaged once the defender's
@@ -436,8 +539,9 @@ export const BASE_SIEGE_RANGE = 84;
  * presses the line toward the enemy base. Rate is deliberately far slower than
  * a unit's walk speed so it reads as pressure, not sliding.
  */
-export const PUSH_RANGE = 200; // px of lane either side of the clash that counts
-export const PUSH_SPEED = 0.85; // px per tick at full advantage
+export const PUSH_RANGE = 480; // px of lane either side of the clash that counts (widened: a
+// column stretched over 400px of lane is still one army and should be weighed as one)
+export const PUSH_SPEED = 1.1; // px per tick at full advantage
 export const PUSH_DEAD_ZONE = 0.08; // ratios inside this band are a stand-off
 
 // --- Lane stagger & engagement -------------------------------------------------
@@ -459,6 +563,22 @@ export const FRONT_LINE_SLOTS = 3;
 /** Reserve units hold this far behind the ally in front of them. */
 export const RESERVE_GAP = 20;
 export const RESERVE_TOLERANCE = 6;
+/**
+ * Reach-into-the-clash for units that still hold a front-line slot.
+ *
+ * Why this exists: `FRIENDLY_SEPARATION` (14) and `RESERVE_GAP` (20) both
+ * exceed every melee range in the game (14-26px), so a second attacker queued
+ * one body behind the first could never actually touch the enemy. In practice
+ * that capped a packed engagement at ONE melee swinger per file no matter how
+ * big the army was — measured at ~3.5% of the field in the 'fight' state — and
+ * no amount of numbers advantage ever converted into a kill rate. This lets the
+ * units that legitimately own a front-line slot swing over the shoulder of the
+ * man in front of them, up to FRONT_LINE_SLOTS deep. It is a small, bounded
+ * reach bonus applied only to melee units that are NOT reserves: ranged units
+ * are untouched (they fight from their own range behind the line) and tanks do
+ * not become faster swarms (speed is unchanged).
+ */
+export const MELEE_REACH_BONUS = 10;
 /**
  * Tank cleave: the heavy units swing wide enough to clip neighbours, which is
  * what stops two deathballs from standing nose to nose forever.
@@ -497,10 +617,21 @@ export const TURRET_RANK_BONUS = 0.3;
 
 // --- Superweapon --------------------------------------------------------------
 export const ULT_MAX = 100;
-/** Passive charge per tick (~31s from empty at 20 ticks/s). */
-export const ULT_PASSIVE_PER_TICK = 0.16;
-/** Charge granted per kill credited to that side. */
-export const ULT_PER_KILL = 9;
+/**
+ * Passive charge per tick (~52s from empty at 20 ticks/s).
+ *
+ * Rebalanced from 0.16: superweapons were measuring at ~67% of ALL damage dealt
+ * in a self-play match (13.7k of 20.5k), which meant the lane was decided by
+ * alternating airstrike deletes rather than by armies. Slowing the meter turns
+ * the ult back into a tempo tool instead of the primary attrition engine.
+ */
+export const ULT_PASSIVE_PER_TICK = 0.12;
+/**
+ * Charge granted per kill credited to that side. Rebalanced from 9: with ~180
+ * kills per match the kill stream alone bought ~16 superweapons, enough to wipe
+ * every push before it reached a base.
+ */
+export const ULT_PER_KILL = 4.5;
 export const ULT_START_CHARGE = 15;
 export interface UltDef {
   label: string;
@@ -537,3 +668,38 @@ export const CHRONO_PER_KILL = 10;
 export const RALLY_DURATION_TICKS = 80; // 4s of boosted morale (speed + attack rate)
 export const RALLY_COOLDOWN_TICKS = 240; // 12s cooldown
 export const RALLY_GOLD_COST = 25; // tactical investment
+
+// --- Reinforcement call-up (the late-game gold sink) --------------------------
+/**
+ * Cooldowns, not the economy, used to be the binding constraint: a real match
+ * banked 2778 unspent gold because there was nothing worth buying once the
+ * upgrades and the turret were maxed. The call-up is the answer — an expensive,
+ * strictly capped purchase that turns a fat treasury into an immediate push.
+ *
+ * Rules, all enforced in the sim so a replay reproduces them exactly:
+ *   - costs escalate with every call-up already bought, at the CURRENT age's price,
+ *   - hard cap of REINFORCE_MAX_PURCHASES per match per side,
+ *   - shared cooldown of REINFORCE_COOLDOWN_TICKS between purchases,
+ *   - the squad bypasses the ordinary spawn lock and spawns staggered behind the
+ *     base apron so it never fights the 14px spawn-block rule.
+ */
+export const REINFORCE_SQUAD_SIZE = 3;
+/** A mixed squad keeps the counter triangle intact instead of dumping one role. */
+export const REINFORCE_ROLES: readonly UnitRole[] = ['swarm', 'ranged', 'tank'];
+/** Purchase index -> cost, per age. Index is clamped to the last entry. */
+export const REINFORCE_COSTS: Record<Age, number[]> = {
+  stone: [90, 150, 240, 360],
+  medieval: [140, 230, 360, 540],
+  modern: [220, 350, 540, 800],
+};
+export const REINFORCE_MAX_PURCHASES = 4;
+export const REINFORCE_COOLDOWN_TICKS = 300; // 15s at 20 ticks/s
+/** Stagger between squad members, behind the base apron. */
+export const REINFORCE_SPACING_PX = 18;
+
+/** Price of the NEXT call-up for `age` given how many have already been bought. */
+export function reinforceCost(age: Age, purchasesUsed: number): number {
+  const table = REINFORCE_COSTS[age];
+  const idx = Math.max(0, Math.min(table.length - 1, Math.floor(purchasesUsed)));
+  return table[idx]!;
+}
