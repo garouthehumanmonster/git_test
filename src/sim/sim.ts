@@ -1,5 +1,6 @@
 import {
   type Age,
+  type EndReason,
   type Intent,
   type MatchRules,
   type MatchStats,
@@ -18,6 +19,8 @@ import {
   ARMOR_COSTS,
   BASE_HP,
   BASE_SIEGE_RANGE,
+  COLLAPSE_DAMAGE_TIE_EPSILON,
+  COLLAPSE_HP_TIE_EPSILON,
   COLLAPSE_START_TICK,
   CLEAVE_FRACTION,
   CLEAVE_RADIUS,
@@ -35,15 +38,23 @@ import {
   LANE_WIDTH,
   MAX_TURRET_RANK,
   MAX_UPGRADE_RANK,
+  MELEE_REACH_BONUS,
   PLAYER_BASE_X,
   PUSH_DEAD_ZONE,
   PUSH_RANGE,
   PUSH_SPEED,
   AI_BASE_X,
+  REINFORCE_COOLDOWN_TICKS,
+  REINFORCE_MAX_PURCHASES,
+  REINFORCE_ROLES,
+  REINFORCE_SPACING_PX,
+  REINFORCE_SQUAD_SIZE,
   RESERVE_GAP,
   RESERVE_TOLERANCE,
+  reinforceCost,
   SAME_AGE_PENALTY,
   SPAWN_BUFFER_PX,
+  stalemateRamp,
   SPAWN_GLOBAL_LOCK,
   TURRET_COSTS,
   TURRET_DEFS,
@@ -96,6 +107,8 @@ function makePlayer(age: Age, gold: number, forgeRank: 0 | 1 | 2 | 3, armorRank:
     chronoCharge: 0,
     rallyTicks: 0,
     rallyCooldown: 0,
+    reinforceUsed: 0,
+    reinforceCooldown: 0,
   };
 }
 
@@ -107,6 +120,7 @@ function emptyStats(): MatchStats {
     turretKills: { player: 0, ai: 0 },
     ultimatesUsed: { player: 0, ai: 0 },
     goldEarned: { player: 0, ai: 0 },
+    baseDamage: { player: 0, ai: 0 },
   };
 }
 
@@ -130,6 +144,7 @@ export function createInitialState(seed = 0xBADF00D, rules: MatchRules = skirmis
     chronoSurgeTicks: 0,
     chronoSurgeSide: null,
     events: [],
+    lastBreakthroughTick: 0,
   };
 }
 
@@ -202,6 +217,82 @@ export function canCastUltimate(state: SimState, side: Side): boolean {
   if (state.result !== 'playing') return false;
   const p = side === 'player' ? state.player : state.ai;
   return p.ultCharge >= ULT_MAX;
+}
+
+// ---------------------------------------------------------------------------
+// Reinforcement call-up (the late-game gold sink)
+// ---------------------------------------------------------------------------
+
+/** Price of the next call-up, or null when the per-match cap is reached. */
+export function reinforceCostFor(state: SimState, side: Side): number | null {
+  const p = side === 'player' ? state.player : state.ai;
+  const used = p.reinforceUsed ?? 0;
+  if (used >= REINFORCE_MAX_PURCHASES) return null;
+  return reinforceCost(p.age, used);
+}
+
+export function canReinforce(state: SimState, side: Side): boolean {
+  if (state.result !== 'playing') return false;
+  const p = side === 'player' ? state.player : state.ai;
+  const cost = reinforceCostFor(state, side);
+  if (cost === null) return false;
+  if ((p.reinforceCooldown ?? 0) > 0) return false;
+  return p.gold >= cost;
+}
+
+/**
+ * Human-readable reason a call-up cannot be bought right now, or null when it
+ * can. The HUD shows this verbatim so a failed purchase is never a mystery.
+ */
+export function reinforceBlockReason(state: SimState, side: Side): string | null {
+  const p = side === 'player' ? state.player : state.ai;
+  if (state.result !== 'playing') return 'Match over';
+  if ((p.reinforceUsed ?? 0) >= REINFORCE_MAX_PURCHASES) return `Cap reached (${REINFORCE_MAX_PURCHASES}/match)`;
+  const cd = p.reinforceCooldown ?? 0;
+  if (cd > 0) return `Cooldown ${Math.ceil(cd / 20)}s`;
+  const cost = reinforceCostFor(state, side);
+  if (cost !== null && p.gold < cost) return `Need ${Math.ceil(cost - p.gold)} more gold`;
+  return null;
+}
+
+/** Spawn the squad behind the base apron, staggered so nobody is spawn-blocked. */
+function deployReinforcements(state: SimState, side: Side, rng: RNG): UnitRole[] {
+  const p = side === 'player' ? state.player : state.ai;
+  const baseX = side === 'player' ? PLAYER_BASE_X + SPAWN_BUFFER_PX : AI_BASE_X - SPAWN_BUFFER_PX;
+  const deployed: UnitRole[] = [];
+  for (let i = 0; i < REINFORCE_SQUAD_SIZE; i++) {
+    const role = REINFORCE_ROLES[i % REINFORCE_ROLES.length]!;
+    const def = UNIT_DEFS[p.age][role];
+    const id = state.nextId++;
+    const x = side === 'player'
+      ? Math.max(PLAYER_BASE_X + 5, baseX - i * REINFORCE_SPACING_PX)
+      : Math.min(AI_BASE_X - 5, baseX + i * REINFORCE_SPACING_PX);
+    const unit: UnitState = {
+      id,
+      def,
+      side,
+      x,
+      yOffset: laneYOffsetFor(id),
+      reserve: false,
+      hp: def.hp * (1 + p.armorRank * UPGRADE_BONUS_PER_RANK),
+      state: 'walk',
+      cooldown: 0,
+      target: null,
+      lastAttackerId: null,
+      dir: side === 'player' ? 1 : -1,
+      animSeed: rng.int(0, 1_000_000),
+      ageTicks: 0,
+      kills: 0,
+      vet: 0,
+      dmgMul: VET_DMG[0]!,
+      hpMul: VET_HP[0]!,
+      spdMul: VET_SPD[0]!,
+    };
+    state.units.push(unit);
+    state.stats.unitsSpawned[side]++;
+    deployed.push(role);
+  }
+  return deployed;
 }
 
 function applyIntent(state: SimState, intent: Intent, rng: RNG): void {
@@ -326,6 +417,19 @@ function applyIntent(state: SimState, intent: Intent, rng: RNG): void {
     p.rallyTicks = RALLY_DURATION_TICKS;
     p.rallyCooldown = RALLY_COOLDOWN_TICKS;
     state.events.push({ kind: 'warCry', side: intent.side, ttl: RALLY_DURATION_TICKS });
+    return;
+  }
+
+  if (intent.type === 'reinforce') {
+    // Re-validated here (not just in canReinforce) so a replayed intent can
+    // never overdraw gold or exceed the cap.
+    if (!canReinforce(state, intent.side)) return;
+    const cost = reinforceCostFor(state, intent.side)!;
+    p.gold -= cost;
+    p.reinforceUsed = (p.reinforceUsed ?? 0) + 1;
+    p.reinforceCooldown = REINFORCE_COOLDOWN_TICKS;
+    const roles = deployReinforcements(state, intent.side, rng);
+    state.events.push({ kind: 'reinforce', side: intent.side, age: p.age, roles, ttl: 60 });
     return;
   }
 }
@@ -483,9 +587,43 @@ function enemyBaseX(side: Side): number {
   return side === 'player' ? AI_BASE_X : PLAYER_BASE_X;
 }
 
+/**
+ * How many of `side`'s melee units are already committed to `targetId`.
+ * Counting intent (not just the 'fight' state) keeps the answer stable across a
+ * tick, so two units picking a target in the same tick cannot both claim the
+ * same slot.
+ */
+function meleeAttackersOn(state: SimState, side: Side, targetId: number): number {
+  let n = 0;
+  for (const o of state.units) {
+    if (o.side !== side || o.state === 'die') continue;
+    if (o.def.range > 26) continue;
+    if (o.target !== targetId) continue;
+    n++;
+  }
+  return n;
+}
+
+/**
+ * Nearest enemy in front of the unit.
+ *
+ * Melee units spread across the enemy line: they prefer the nearest enemy that
+ * still has a free front-line slot, and only fall back to the nearest enemy
+ * overall when every reachable one is already covered. This is what lets a
+ * material advantage buy damage — with everyone piling onto the same front man,
+ * a 12-unit army dealt exactly the same melee damage as a 3-unit one, so the
+ * front-line cap silently became a hard throughput ceiling and no push ever
+ * broke through. Per-target the cap is unchanged (see the engagement test).
+ *
+ * Ranged units keep plain nearest-target selection: they fight from behind the
+ * line at their own range and must not reach past the frontline.
+ */
 function findTarget(state: SimState, u: UnitState): UnitState | null {
+  const isMelee = u.def.range <= 26;
   let best: UnitState | null = null;
   let bestDist = Infinity;
+  let open: UnitState | null = null;
+  let openDist = Infinity;
   for (const other of state.units) {
     if (other.side === u.side || other.state === 'die') continue;
     const dx = other.x - u.x;
@@ -497,8 +635,12 @@ function findTarget(state: SimState, u: UnitState): UnitState | null {
       bestDist = dist;
       best = other;
     }
+    if (isMelee && dist < openDist && meleeAttackersOn(state, u.side, other.id) < FRONT_LINE_SLOTS) {
+      openDist = dist;
+      open = other;
+    }
   }
-  return best;
+  return isMelee && open ? open : best;
 }
 
 /**
@@ -547,14 +689,21 @@ function ageTier(age: Age): number {
   return AGE_ORDER.indexOf(age);
 }
 
-function computeDamage(attacker: UnitState, attackerPlayer: PlayerState): number {
+/**
+ * `ramp` is the attrition multiplier for this tick (see `stalemateRamp`). It
+ * applies to unit combat only — superweapons and base turrets are deliberately
+ * excluded so the ramp sharpens the lane fight instead of re-inflating the two
+ * mechanics that were already carrying the match.
+ */
+function computeDamage(attacker: UnitState, attackerPlayer: PlayerState, ramp = 0): number {
   let dmg = attacker.def.damage * attacker.dmgMul;
   dmg *= 1 + attackerPlayer.forgeRank * UPGRADE_BONUS_PER_RANK;
+  dmg *= 1 + ramp;
   return dmg;
 }
 
-function computeDamageVs(attacker: UnitState, defender: UnitState, attackerPlayer: PlayerState): number {
-  let dmg = computeDamage(attacker, attackerPlayer);
+function computeDamageVs(attacker: UnitState, defender: UnitState, attackerPlayer: PlayerState, ramp = 0): number {
+  let dmg = computeDamage(attacker, attackerPlayer, ramp);
   if (attacker.def.strongVs === defender.def.role) dmg *= COUNTER_MULTIPLIER;
   if (attacker.def.age === defender.def.age) dmg *= SAME_AGE_PENALTY;
   const tierDelta = ageTier(attacker.def.age) - ageTier(defender.def.age);
@@ -657,11 +806,116 @@ function promoteVet(u: UnitState, owner: PlayerState): void {
 }
 
 // ---------------------------------------------------------------------------
+// Match resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Decide the match, fairly, at the simulation level.
+ *
+ * One base reaching zero is an ordinary win or loss. When BOTH bases reach zero
+ * on the same tick — which is the normal outcome once Timeline Collapse is
+ * draining them at an identical rate — the result is decided by the documented
+ * tiebreak hierarchy instead of defaulting to a loss:
+ *
+ *   1. Base HP immediately before that tick (see `COLLAPSE_HP_TIE_EPSILON`)
+ *   2. Net base damage dealt: siege damage out minus siege damage taken
+ *   3. Kills
+ *   4. An explicit DRAW — never a silent defeat
+ *
+ * Every input to this function lives in `state` (or is the caller's pre-tick HP
+ * snapshot), so it is fully replay-safe: feeding the same tick sequence always
+ * produces the same verdict and the same `endReason`.
+ */
+export function resolveMatchEnd(
+  state: SimState,
+  playerHpBefore: number,
+  aiHpBefore: number,
+): void {
+  if (state.result !== 'playing') return;
+  const playerDown = state.player.baseHp <= 0;
+  const aiDown = state.ai.baseHp <= 0;
+  if (!playerDown && !aiDown) return;
+
+  state.endHpSnapshot = { player: playerHpBefore, ai: aiHpBefore };
+
+  let result: 'win' | 'loss' | 'draw';
+  let reason: EndReason;
+
+  if (playerDown && aiDown) {
+    // Simultaneous zero: the collapse tiebreak ladder.
+    const hpDelta = playerHpBefore - aiHpBefore;
+    const netDamage = state.stats.baseDamage.player - state.stats.baseDamage.ai;
+    const killDelta = state.stats.kills.player - state.stats.kills.ai;
+    if (hpDelta > COLLAPSE_HP_TIE_EPSILON) {
+      result = 'win';
+      reason = 'collapseBaseHp';
+    } else if (hpDelta < -COLLAPSE_HP_TIE_EPSILON) {
+      result = 'loss';
+      reason = 'collapseBaseHp';
+    } else if (netDamage > COLLAPSE_DAMAGE_TIE_EPSILON) {
+      result = 'win';
+      reason = 'collapseBaseDamage';
+    } else if (netDamage < -COLLAPSE_DAMAGE_TIE_EPSILON) {
+      result = 'loss';
+      reason = 'collapseBaseDamage';
+    } else if (killDelta > 0) {
+      result = 'win';
+      reason = 'collapseKills';
+    } else if (killDelta < 0) {
+      result = 'loss';
+      reason = 'collapseKills';
+    } else {
+      result = 'draw';
+      reason = 'collapseDraw';
+    }
+  } else if (aiDown) {
+    result = 'win';
+    reason = 'enemyBaseDestroyed';
+  } else {
+    result = 'loss';
+    reason = 'playerBaseDestroyed';
+  }
+
+  state.result = result;
+  state.endReason = reason;
+  state.events.push({ kind: 'gameover', result });
+}
+
+/** Human-readable one-liner for the results card. */
+export function endReasonLabel(state: SimState): string {
+  switch (state.endReason) {
+    case 'enemyBaseDestroyed': return 'Enemy base destroyed';
+    case 'playerBaseDestroyed': return 'Your base was destroyed';
+    case 'collapseBaseHp': return 'Collapse tiebreak: base integrity';
+    case 'collapseBaseDamage': return 'Collapse tiebreak: base damage';
+    case 'collapseKills': return 'Collapse tiebreak: kills';
+    case 'collapseDraw': return 'Timeline Collapse: draw';
+    default: return '';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Per-tick simulation
 // ---------------------------------------------------------------------------
 
-export function tick(state: SimState, intents: Intent[] = []): SimState {
+export interface TickOptions {
+  /**
+   * Set false to suppress the built-in AI brain. The headless balance runner
+   * uses it so BOTH sides are driven by the same external bot; leaving it on
+   * would give the AI a second, differently-streamed decision every tick and
+   * make a "mirror match" measurement meaningless.
+   */
+  aiBrain?: boolean;
+}
+
+export function tick(state: SimState, intents: Intent[] = [], options: TickOptions = {}): SimState {
   if (state.result !== 'playing') return state;
+
+  // Base HP exactly as it stood before anything happened this tick. This is the
+  // "immediately before the collapse tick" reference the tiebreak uses, so it
+  // has to be taken before any siege hit or collapse drain of this tick lands.
+  const playerHpBefore = state.player.baseHp;
+  const aiHpBefore = state.ai.baseHp;
 
   const rng = new RNG(state.rngState);
 
@@ -669,7 +923,7 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
   for (const intent of intents) applyIntent(state, intent, rng);
 
   // 2. AI decision-making runs on a cadence.
-  maybeAIAct(state, rng);
+  if (options.aiBrain !== false) maybeAIAct(state, rng);
 
   // 3. Passive gold, ultimate charge and cooldown decrements. Both economies
   // accelerate over the match so a dead-even lane still reaches a conclusion.
@@ -696,9 +950,12 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
   if (state.ai.rallyTicks && state.ai.rallyTicks > 0) state.ai.rallyTicks--;
   if (state.player.rallyCooldown && state.player.rallyCooldown > 0) state.player.rallyCooldown--;
   if (state.ai.rallyCooldown && state.ai.rallyCooldown > 0) state.ai.rallyCooldown--;
+  if (state.player.reinforceCooldown && state.player.reinforceCooldown > 0) state.player.reinforceCooldown--;
+  if (state.ai.reinforceCooldown && state.ai.reinforceCooldown > 0) state.ai.reinforceCooldown--;
 
   // 4. Units — targeting, movement, attacks
   const isSurgeActive = (state.chronoSurgeTicks ?? 0) > 0;
+  const ramp = stalemateRamp(state.tick, state.lastBreakthroughTick);
   for (const u of state.units) {
     if (u.state === 'die') continue;
     u.ageTicks++;
@@ -748,13 +1005,18 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
         const defender = u.side === 'player' ? state.ai : state.player;
         // Everything that reaches a base hits it hard: a breached line should
         // convert into a result, not a long tease.
-        let dmg = computeDamage(u, owner) * 1.15;
+        let dmg = computeDamage(u, owner, ramp) * 1.15;
         const tierDelta = ageTier(u.def.age);
         dmg *= 1 + tierDelta * AGE_BONUS_PER_TIER;
         dmg *= 0.95 + rng.next() * 0.1;
         // Heavy siege engines hurt structures far more than infantry do.
         if (u.def.role === 'tank') dmg *= 1.6;
         defender.baseHp -= dmg;
+        // Who actually broke through — the primary collapse tiebreaker. It also
+        // re-arms the attrition ramp: a lane that is being pushed does not need
+        // extra lethality.
+        state.stats.baseDamage[u.side] += dmg;
+        state.lastBreakthroughTick = state.tick;
         state.events.push({
           kind: 'baseHit',
           side: u.side === 'player' ? 'ai' : 'player',
@@ -779,12 +1041,16 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
       const ahead = isMelee ? engagedAheadCount(state, u, target) : 0;
       const holdsSlot = !isMelee || ahead < FRONT_LINE_SLOTS;
       u.reserve = !holdsSlot;
+      // A melee unit that owns a front-line slot may reach over the shoulder of
+      // the ally in front of it, so FRONT_LINE_SLOTS means three real swingers
+      // instead of one. Ranged units keep their own (long) range untouched.
+      const reach = isMelee && holdsSlot ? u.def.range + MELEE_REACH_BONUS : u.def.range;
 
       const temporalMul = isFriendlySurge ? 1.35 : isEnemyStasis ? 0.35 : 1.0;
       const rallySpd = isRally ? 1.25 : 1.0;
       const unitSpeed = u.def.speed * u.spdMul * temporalMul * rallySpd;
 
-      if (dist > u.def.range) {
+      if (dist > reach) {
         u.state = 'walk';
         if (!u.reserve) {
           u.x += u.dir * unitSpeed;
@@ -797,7 +1063,7 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
         u.state = 'fight';
         if (u.cooldown <= 0) {
           u.cooldown = u.def.attackRate;
-          fireAttack(state, u, target, owner, rng);
+          fireAttack(state, u, target, owner, rng, ramp);
         }
       } else {
         // In range but queued behind the front line: hold at a readable spacing.
@@ -864,14 +1130,8 @@ export function tick(state: SimState, intents: Intent[] = []): SimState {
     }
   }
 
-  // 8. Win/Loss
-  if (state.player.baseHp <= 0) {
-    state.result = 'loss';
-    state.events.push({ kind: 'gameover', result: 'loss' });
-  } else if (state.ai.baseHp <= 0) {
-    state.result = 'win';
-    state.events.push({ kind: 'gameover', result: 'win' });
-  }
+  // 8. Match resolution — including the fair simultaneous-zero rule.
+  resolveMatchEnd(state, playerHpBefore, aiHpBefore);
 
   state.tick++;
   state.rngState = rng.state;
@@ -973,13 +1233,13 @@ function applyFriendlySeparation(state: SimState): void {
   }
 }
 
-function fireAttack(state: SimState, u: UnitState, target: UnitState, owner: PlayerState, rng: RNG): void {
+function fireAttack(state: SimState, u: UnitState, target: UnitState, owner: PlayerState, rng: RNG, ramp = 0): void {
   const isRally = (owner.rallyTicks ?? 0) > 0;
   const roll = rng.next();
   const isCrit = isRally || (u.vet >= 1 && roll > 0.4) || (u.def.strongVs === target.def.role && roll > 0.5) || roll > 0.88;
   const rallyDmgMul = isRally ? 1.15 : 1.0;
 
-  const baseDmg = computeDamageVs(u, target, owner) * (0.92 + roll * 0.16) * rallyDmgMul;
+  const baseDmg = computeDamageVs(u, target, owner, ramp) * (0.92 + roll * 0.16) * rallyDmgMul;
   const attackerColor = u.side === 'player' ? 0x64b5f6 : 0xef5350;
 
   if (u.def.range <= 26) {
@@ -1168,14 +1428,19 @@ export function runFor(state: SimState, ticks: number, intentsFn?: (s: SimState)
  * balance tuning, determinism checks, and CI smoke tests.
  */
 export function simulateBotMatch(seed = 0xC0FFEE, maxTicks = 8000, rules: MatchRules = skirmishRules()): {
-  result: 'win' | 'loss' | 'timeout';
+  result: 'win' | 'loss' | 'draw' | 'timeout';
   ticks: number;
   finalState: SimState;
 } {
   const s = createInitialState(seed, rules);
+  // Both sides are driven by `botIntentsFor` with the built-in AI brain off, so
+  // the only difference between them is the RNG stream — a real mirror match.
+  const drive: TickOptions = { aiBrain: false };
   while (s.result === 'playing' && s.tick < maxTicks) {
-    const intents: Intent[] = s.tick % AI_THINK_TICKS === 0 ? botIntentsFor(s, 'player') : [];
-    tick(s, intents);
+    const intents: Intent[] = s.tick % AI_THINK_TICKS === 0
+      ? [...botIntentsFor(s, 'player'), ...botIntentsFor(s, 'ai')]
+      : [];
+    tick(s, intents, drive);
   }
   return {
     result: s.result === 'playing' ? 'timeout' : s.result,

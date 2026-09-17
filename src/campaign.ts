@@ -27,15 +27,27 @@ export interface StageProgress {
   bestMs?: Record<number, number>;
 }
 
+/**
+ * A finished match, as the campaign sees it.
+ *
+ * `draw` is a first-class outcome: when Timeline Collapse takes both bases down
+ * on the same tick and every tiebreaker is level, the player did NOT lose, and
+ * the old behaviour (silently reporting a defeat) locked them out of progress
+ * on a stage they had actually survived.
+ */
+export type MatchOutcome = 'win' | 'loss' | 'draw';
+
 export interface MatchSummary {
   stageId: number;
-  result: 'win' | 'loss';
+  result: MatchOutcome;
   /** Elapsed match time in milliseconds. */
   elapsedMs: number;
   unitsSpawned: number;
   enemiesDestroyed: number;
   unitsLost: number;
   baseHpRatio: number;
+  /** Short line explaining how the match ended, shown verbatim on the card. */
+  reason?: string;
 }
 
 export interface ResultsPayload extends MatchSummary {
@@ -44,8 +56,16 @@ export interface ResultsPayload extends MatchSummary {
   hasNextStage: boolean;
 }
 
-/** 1-3 stars: a flawless base is 3, a bloody win is 1. */
-export function starRating(result: 'win' | 'loss', baseHpRatio: number): number {
+/** Minimum stars a draw is worth: the stage counts as survived, not mastered. */
+export const DRAW_STARS = 1;
+
+/**
+ * 1-3 stars: a flawless base is 3, a bloody win is 1.
+ * A draw awards the minimum `DRAW_STARS` — the timeline held, the player was
+ * not beaten, and progress must not stall on it.
+ */
+export function starRating(result: MatchOutcome, baseHpRatio: number): number {
+  if (result === 'draw') return DRAW_STARS;
   if (result !== 'win') return 0;
   if (baseHpRatio > 0.8) return 3;
   if (baseHpRatio > 0.4) return 2;
@@ -172,8 +192,13 @@ export function totalStars(progress: StageProgress): number {
 export const MAX_STARS = 3 * 5;
 
 /**
- * Record a finished match. Winning unlocks the next stage; stars only ever go
- * up, and a faster clear replaces the old best.
+ * Record a finished match. Winning — or drawing, which also means the stage was
+ * survived — unlocks the next stage; stars only ever go up, and a faster clear
+ * replaces the old best.
+ *
+ * A draw deliberately does NOT set a best-clear time: it is not a clean clear,
+ * only proof the player was not beaten. Its stars still count, so nobody can be
+ * locked out of the campaign by a simultaneous-zero collapse.
  */
 export function recordResult(summary: MatchSummary): ResultsPayload {
   const progress = loadProgress();
@@ -182,12 +207,14 @@ export function recordResult(summary: MatchSummary): ResultsPayload {
   const previousBest = progress.bestMs?.[summary.stageId];
   let isBest = false;
 
-  if (summary.result === 'win' && stars > 0) {
+  if ((summary.result === 'win' || summary.result === 'draw') && stars > 0) {
     progress.stars[summary.stageId] = Math.max(previousStars, stars);
-    progress.bestMs = progress.bestMs ?? {};
-    if (previousBest === undefined || summary.elapsedMs < previousBest) {
-      isBest = previousBest !== undefined || previousStars === 0;
-      progress.bestMs[summary.stageId] = summary.elapsedMs;
+    if (summary.result === 'win') {
+      progress.bestMs = progress.bestMs ?? {};
+      if (previousBest === undefined || summary.elapsedMs < previousBest) {
+        isBest = previousBest !== undefined || previousStars === 0;
+        progress.bestMs[summary.stageId] = summary.elapsedMs;
+      }
     }
     if (summary.stageId >= progress.unlocked && summary.stageId < STAGES.length) {
       progress.unlocked = summary.stageId + 1;

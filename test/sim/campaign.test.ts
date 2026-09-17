@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   CAMPAIGN_STORAGE_KEY,
+  DRAW_STARS,
   MAX_STARS,
   STAGES,
   baseHpRatio,
@@ -182,5 +183,76 @@ describe('campaign progression', () => {
     expect(merged.bestMs?.[1]).toBe(45000);
     expect(merged.bestMs?.[2]).toBe(70000);
     expect(merged.bestMs?.[3]).toBe(60000);
+  });
+});
+
+// --- Draw outcome (Timeline Collapse took both bases on the same tick) --------
+
+const draw = (stageId: number, baseHp = 0, elapsedMs = 200_000) => ({
+  stageId,
+  result: 'draw' as const,
+  elapsedMs,
+  unitsSpawned: 168,
+  enemiesDestroyed: 151,
+  unitsLost: 16,
+  baseHpRatio: baseHpRatio(baseHp),
+  reason: 'Collapse tiebreak: base damage',
+});
+
+describe('draw outcome', () => {
+  let store: ReturnType<typeof fakeStore>;
+
+  beforeEach(() => {
+    store = fakeStore();
+    setProgressStore(store);
+  });
+
+  it('awards the minimum star result for a draw, never zero', () => {
+    expect(starRating('draw', 0)).toBe(1);
+    expect(starRating('draw', 1)).toBe(1);
+    expect(DRAW_STARS).toBe(1);
+  });
+
+  it('unlocks the next stage on a draw so a collapse cannot lock a player out', () => {
+    const payload = recordResult(draw(1));
+    expect(payload.stars).toBe(DRAW_STARS);
+    expect(payload.hasNextStage).toBe(true);
+    const p = loadProgress();
+    expect(p.unlocked).toBe(2);
+    expect(isUnlocked(p, 2)).toBe(true);
+    expect(p.stars[1]).toBe(DRAW_STARS);
+  });
+
+  it('does not record a best clear time for a draw', () => {
+    recordResult(draw(1, 0, 120_000));
+    expect(loadProgress().bestMs?.[1]).toBeUndefined();
+    recordResult(win(1, BASE_HP * 0.5, 150_000));
+    const p = loadProgress();
+    expect(p.bestMs?.[1]).toBe(150_000);
+    // A later win upgrades the stars a draw parked at the minimum.
+    expect(p.stars[1]).toBe(2);
+  });
+
+  it('never downgrades stars earned by an earlier clean win', () => {
+    recordResult(win(1, BASE_HP));
+    recordResult(draw(1));
+    expect(loadProgress().stars[1]).toBe(3);
+  });
+
+  it('keeps the draw outcome on the payload for the results card to explain', () => {
+    const payload = recordResult(draw(2));
+    expect(payload.result).toBe('draw');
+    expect(payload.reason).toBe('Collapse tiebreak: base damage');
+  });
+
+  it('survives old saves that predate the draw outcome', () => {
+    // A v1 save written before draws existed: no schema change was needed, but
+    // missing/unknown fields must still sanitise safely.
+    store.map.set(CAMPAIGN_STORAGE_KEY, JSON.stringify({ unlocked: 3, stars: { 1: 2, 2: 3 } }));
+    const p = loadProgress();
+    expect(p.unlocked).toBe(3);
+    expect(p.bestMs).toEqual({});
+    expect(recordResult(draw(3)).stars).toBe(DRAW_STARS);
+    expect(loadProgress().unlocked).toBe(4);
   });
 });
