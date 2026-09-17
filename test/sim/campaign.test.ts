@@ -8,6 +8,7 @@ import {
   emptyProgress,
   isUnlocked,
   loadProgress,
+  mergeProgress,
   recordResult,
   saveProgress,
   setProgressStore,
@@ -168,5 +169,18 @@ describe('campaign progression', () => {
     clearProgress();
     expect(loadProgress().unlocked).toBe(1);
     expect(loadProgress().stars[1]).toBeUndefined();
+  });
+
+  it('merges cloud and local progress picking highest unlocks and best stars', () => {
+    const local = { unlocked: 2, stars: { 1: 2, 2: 1 }, bestMs: { 1: 50000, 2: 70000 } };
+    const cloud = { unlocked: 3, stars: { 1: 3, 3: 2 }, bestMs: { 1: 45000, 3: 60000 } };
+    const merged = mergeProgress(local, cloud);
+    expect(merged.unlocked).toBe(3);
+    expect(merged.stars[1]).toBe(3);
+    expect(merged.stars[2]).toBe(1);
+    expect(merged.stars[3]).toBe(2);
+    expect(merged.bestMs?.[1]).toBe(45000);
+    expect(merged.bestMs?.[2]).toBe(70000);
+    expect(merged.bestMs?.[3]).toBe(60000);
   });
 });

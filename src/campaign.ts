@@ -133,7 +133,11 @@ export function loadProgress(): StageProgress {
 
 export function saveProgress(progress: StageProgress): void {
   try {
-    activeStore().setItem(CAMPAIGN_STORAGE_KEY, JSON.stringify(sanitize(progress)));
+    const data = JSON.stringify(sanitize(progress));
+    activeStore().setItem(CAMPAIGN_STORAGE_KEY, data);
+    if (typeof window !== 'undefined' && window.CrazyGames?.SDK?.data?.setItem) {
+      window.CrazyGames.SDK.data.setItem(CAMPAIGN_STORAGE_KEY, data).catch(() => {});
+    }
   } catch {
     // Storage full / blocked — the run still counts for this session.
   }
@@ -141,6 +145,24 @@ export function saveProgress(progress: StageProgress): void {
 
 export function clearProgress(): void {
   saveProgress(emptyProgress());
+}
+
+/** Merges cloud and local progress, taking highest unlocks, stars, and fastest times. */
+export function mergeProgress(a: StageProgress, b: StageProgress): StageProgress {
+  const sa = sanitize(a);
+  const sb = sanitize(b);
+  const unlocked = Math.max(sa.unlocked, sb.unlocked);
+  const stars: Record<number, number> = { ...sa.stars };
+  for (const [k, v] of Object.entries(sb.stars)) {
+    const id = Number(k);
+    stars[id] = Math.max(stars[id] ?? 0, v);
+  }
+  const bestMs: Record<number, number> = { ...(sa.bestMs ?? {}) };
+  for (const [k, v] of Object.entries(sb.bestMs ?? {})) {
+    const id = Number(k);
+    bestMs[id] = Math.min(bestMs[id] ?? Infinity, v);
+  }
+  return { unlocked, stars, bestMs };
 }
 
 export function totalStars(progress: StageProgress): number {

@@ -10,6 +10,7 @@ import {
   MAX_STARS,
 } from '../campaign';
 import { colorHex, paletteFor } from './palette';
+import { crazyGetUser } from '../crazygames';
 
 /**
  * Campaign stage select.
@@ -60,6 +61,17 @@ export class MenuScene extends Phaser.Scene {
       stroke: '#171009', strokeThickness: 4,
     }).setOrigin(0.5);
     starText.setAlpha(0.9);
+
+    const cloudStatus = this.add.text(LANE_WIDTH - 16, 24, 'AUTO-SAVE ACTIVE', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#8fb84a',
+      stroke: '#171009', strokeThickness: 3,
+    }).setOrigin(1, 0.5);
+
+    crazyGetUser().then((user) => {
+      if (user?.username) {
+        cloudStatus.setText(`CLOUD: ${user.username.toUpperCase()}`).setColor('#4ade80');
+      }
+    }).catch(() => {});
 
     this.buildCards();
   }

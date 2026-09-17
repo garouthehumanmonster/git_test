@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { generateTextures } from './textures';
-import { crazyLoadingStop } from '../crazygames';
+import { crazyLoadingStop, crazyLoadData } from '../crazygames';
+import { CAMPAIGN_STORAGE_KEY, loadProgress, mergeProgress, saveProgress } from '../campaign';
 
 const AGES = ['stone', 'medieval', 'modern'] as const;
 
@@ -21,8 +22,19 @@ export class BootScene extends Phaser.Scene {
     }
   }
 
-  create(): void {
+  async create(): Promise<void> {
     generateTextures(this);
+    try {
+      const cloud = await crazyLoadData(CAMPAIGN_STORAGE_KEY);
+      if (cloud) {
+        const local = loadProgress();
+        const parsed = JSON.parse(cloud);
+        const merged = mergeProgress(local, parsed);
+        saveProgress(merged);
+      }
+    } catch {
+      // Cloud sync error ignored, local storage remains authoritative
+    }
     crazyLoadingStop();
     // The campaign front end comes first; it hands a stage id to GameScene.
     this.scene.start('MenuScene');
