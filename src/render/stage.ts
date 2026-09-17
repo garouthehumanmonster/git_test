@@ -87,10 +87,7 @@ export class Stage {
     if (this.scene.textures.exists(`bg_${age}`)) this.sky.setTexture(`bg_${age}`);
     this.drawLane(pal);
     this.scene.cameras.main.setBackgroundColor(pal.panel);
-    for (const inst of this.props) {
-      const def = this.propDefFor(age, inst.placement.prop);
-      if (def && this.scene.textures.exists(def.key)) inst.img.setTexture(def.key);
-    }
+    this.buildProps(age);
   }
 
   private propDefFor(age: Age, name: string): PropDef | undefined {
@@ -101,6 +98,7 @@ export class Stage {
     for (const inst of this.props) inst.img.destroy();
     this.props = [];
     this.propIndex = 0;
+    if (this.scene.textures.exists(`bg_${age}`)) return;
     for (const placement of PROP_LAYOUT) {
       const def = this.propDefFor(age, placement.prop);
       if (!def || !this.scene.textures.exists(def.key)) continue;

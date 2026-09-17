@@ -433,11 +433,11 @@ export class Hud {
 
     const icon = s.add.image(x - w / 2 + 24, y, `portrait_stone_${role}`)
       .setOrigin(0.5).setScale(PIXEL_SCALE).setDepth(12);
-    const label = s.add.text(x - w / 2 + 42, y - h / 2 + 8, '', {
-      fontFamily: 'monospace', fontSize: '11px', color: '#ffe0b0', fontStyle: 'bold',
+    const label = s.add.text(x - w / 2 + 40, y - h / 2 + 8, '', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#ffe0b0', fontStyle: 'bold',
       stroke: '#171009', strokeThickness: 3,
     }).setOrigin(0, 0).setDepth(12);
-    const cost = s.add.text(x - w / 2 + 42, y - h / 2 + 23, '', {
+    const cost = s.add.text(x - w / 2 + 40, y - h / 2 + 23, '', {
       fontFamily: 'monospace', fontSize: '11px', color: '#f4c85b',
       stroke: '#171009', strokeThickness: 3,
     }).setOrigin(0, 0).setDepth(12);
@@ -445,7 +445,7 @@ export class Hud {
       fontFamily: 'monospace', fontSize: '9px', color: '#b08354',
       stroke: '#171009', strokeThickness: 2,
     }).setOrigin(0, 0).setDepth(12);
-    const hotkey = s.add.text(x + w / 2 - 7, y - h / 2 + 7, ROLE_HOTKEY[role], {
+    const hotkey = s.add.text(x + w / 2 - 8, y - h / 2 + 23, ROLE_HOTKEY[role], {
       fontFamily: 'monospace', fontSize: '10px', color: '#ffd166', fontStyle: 'bold',
       stroke: '#171009', strokeThickness: 3,
     }).setOrigin(1, 0).setDepth(12);

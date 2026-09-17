@@ -599,19 +599,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private makeTowerHpBars(): void {
-    const pal = paletteFor(this.sim.player.age);
-    const barW = 96;
-    const barH = 8;
-    // Boss-bar style: floating just above the roof line, clear of the turret.
-    const y = this.towerTopY('player') - 12;
-    this.add.rectangle(PLAYER_BASE_X, y, barW + 4, barH + 4, pal.dark, 0.92)
-      .setOrigin(0.5).setDepth(3.4).setStrokeStyle(1, pal.edge);
-    this.add.rectangle(PLAYER_BASE_X, y, barW, barH, pal.panel, 1).setOrigin(0.5).setDepth(3.5);
-    this.playerBaseHpBar = this.add.rectangle(PLAYER_BASE_X - barW / 2, y, barW, barH, pal.accent).setOrigin(0, 0.5).setDepth(3.6);
-    this.add.rectangle(AI_BASE_X, y, barW + 4, barH + 4, pal.dark, 0.92)
-      .setOrigin(0.5).setDepth(3.4).setStrokeStyle(1, pal.edge);
-    this.add.rectangle(AI_BASE_X, y, barW, barH, pal.panel, 1).setOrigin(0.5).setDepth(3.5);
-    this.aiBaseHpBar = this.add.rectangle(AI_BASE_X + barW / 2, y, barW, barH, pal.highlight).setOrigin(1, 0.5).setDepth(3.6);
+    // Top HUD already features prominent base integrity meters.
+    // Keep zero-sized invisible handles for state/theme updates without mid-air clutter.
+    this.playerBaseHpBar = this.add.rectangle(0, 0, 0, 0, 0).setVisible(false);
+    this.aiBaseHpBar = this.add.rectangle(0, 0, 0, 0, 0).setVisible(false);
   }
 
   private restart(): void {
@@ -1230,7 +1221,9 @@ export class GameScene extends Phaser.Scene {
       if (ev.kind === 'hit') {
         const isCrit = ev.isCrit ?? (ev.damage >= 22);
         const color = isCrit ? 0xffd700 : 0xffd166;
-        this.addFloat(ev.x + (Math.random() - 0.5) * 12, ev.y - 14, isCrit ? `CRIT! -${ev.damage}` : `-${ev.damage}`, color, isCrit ? 36 : 24, isCrit);
+        const scatterX = (Math.random() - 0.5) * 36;
+        const scatterY = (Math.random() - 0.5) * 16;
+        this.addFloat(ev.x + scatterX, ev.y - 14 + scatterY, isCrit ? `CRIT! -${ev.damage}` : `-${ev.damage}`, color, isCrit ? 36 : 24, isCrit);
         this.dust.setParticleTint(color);
         this.dust.emitParticleAt(ev.x, ev.y, isCrit ? 10 : 4);
         if (isCrit) {
@@ -1479,17 +1472,18 @@ export class GameScene extends Phaser.Scene {
 
   private addFloat(x: number, y: number, text: string, color: number, ttl: number, pop = false): void {
     const t = this.add.text(x, y, text, {
-      fontFamily: 'monospace', fontSize: pop ? '20px' : '15px', color: colorHex(color), fontStyle: 'bold',
+      fontFamily: 'monospace', fontSize: pop ? '17px' : '14px', color: colorHex(color), fontStyle: 'bold',
       stroke: '#050d12', strokeThickness: pop ? 4 : 3,
     }).setOrigin(0.5).setDepth(DEPTH.float);
     if (pop) {
-      t.setScale(1.35);
+      t.setScale(1.25);
       this.tweens.add({ targets: t, scaleX: 1, scaleY: 1, duration: 140, ease: 'Back.easeOut' });
     }
     this.floatingText.push(t);
     this.tweens.add({
       targets: t,
-      y: y - (pop ? 32 : 24),
+      y: y - (pop ? 34 : 24),
+      x: x + (Math.random() - 0.5) * 14,
       alpha: 0,
       duration: ttl * TICK_MS,
       onComplete: () => {
