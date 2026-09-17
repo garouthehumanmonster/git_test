@@ -223,9 +223,9 @@ function renderScene(age: Age): SoftGfx {
   ];
   blit(g, rasterize(16, 16, crest, age), 30, 32, PIXEL_SCALE, 0xffffff, 1, 0.5, 0.5);
   fill(g, LANE_WIDTH / 2 - 191, 25, 183, 20, pal.dark);
-  fill(g, LANE_WIDTH / 2 - 188, 28, 177, 14, pal.body);
+  fill(g, LANE_WIDTH / 2 - 188, 28, 177, 14, 0x2ecc71);
   fill(g, LANE_WIDTH / 2 + 8, 25, 183, 20, pal.dark);
-  fill(g, LANE_WIDTH / 2 + 11, 28, 140, 14, pal.highlight);
+  fill(g, LANE_WIDTH / 2 + 11, 28, 140, 14, 0xef5350);
   void BASE_HP;
 
   const panelY = LANE_HEIGHT - 78;

@@ -41,24 +41,25 @@ export function unitKey(age: Age | string, role: UnitRole | string, side: 'playe
 // ---------------------------------------------------------------- stone age
 
 const CLUBBER: SpriteOp[] = [
-  // hide shield, held on the far side with wood/hide boss
+  // hide shield, held on the far side with bold team face and wood boss
   r(7, 8, 6, 9, 'mid'),
-  r(8, 9, 4, 7, 'body'),
+  r(8, 9, 4, 7, 'team'),
   r(9, 11, 2, 3, 'accent'),
   // legs with calf definition + bare feet
   r(13, 16, 4, 5, 'edge'), r(14, 21, 3, 5, 'mid'),
   r(18, 16, 4, 5, 'edge'), r(19, 21, 3, 5, 'mid'),
   r(13, 26, 4, 1, 'panel'), r(19, 26, 4, 1, 'panel'),
-  // bare torso: back shadow, muscle mid-tone, chest highlight, sash & belt
+  // bare torso: back shadow, muscle mid-tone, chest highlight, sash & team war-kilt
   r(12, 9, 9, 7, 'edge'),
   r(14, 9, 6, 5, 'body'),
   r(17, 10, 3, 2, 'accent'),
-  r(12, 11, 9, 1, 'team'),
-  r(12, 15, 9, 1, 'panel'),
+  r(12, 11, 9, 2, 'team'),
+  r(12, 14, 9, 3, 'team'),
+  r(12, 17, 9, 1, 'panel'),
   // head: ragged hair fringe, headband, brow ridge, eye, jawline
   r(14, 3, 6, 6, 'body'),
   r(13, 1, 5, 2, 'panel'), r(17, 2, 3, 1, 'panel'),
-  r(13, 4, 7, 1, 'team'),
+  r(13, 3, 7, 2, 'team'),
   r(19, 5, 1, 1, 'body'), // nose bridge
   r(18, 5, 1, 1, 'ink'),  // eye
   // club raised overhead: angled arm, knotted heavy stone cudgel with flake highlights
@@ -110,15 +111,16 @@ const WAR_MAMMOTH: SpriteOp[] = [
   tri(43, 16, 46, 10, 44, 16, 'light'),
   tri(45, 11, 46, 8, 47, 11, 'light'),
   r(42, 18, 2, 2, 'accent'),
-  // rider: fur-clad chieftain, team blanket, spear with pennant
+  // rider: fur-clad chieftain, broad team blanket with gold fringe, spear with pennant
   r(21, 8, 5, 5, 'mid'),
-  r(16, 12, 13, 2, 'team'),
+  r(14, 11, 18, 5, 'team'),
+  r(13, 16, 20, 1, 'accent'),
   r(20, 4, 6, 6, 'body'),
-  r(20, 4, 6, 1, 'team'),
+  r(19, 3, 8, 2, 'team'),
   r(21, 1, 4, 3, 'body'),
   r(20, 1, 6, 1, 'panel'),
   r(26, 0, 1, 9, 'edge'),
-  tri(27, 0, 34, 2, 27, 5, 'team'),
+  tri(27, 0, 36, 2, 27, 6, 'team'),
 ];
 
 const SLINGER: SpriteOp[] = [
@@ -129,14 +131,15 @@ const SLINGER: SpriteOp[] = [
   r(12, 16, 4, 5, 'edge'), r(13, 21, 4, 5, 'body'),
   r(18, 16, 4, 5, 'edge'), r(19, 21, 4, 5, 'body'),
   r(12, 26, 5, 1, 'panel'), r(19, 26, 5, 1, 'panel'),
-  // torso, team sash, hide skirt
+  // torso, team war-tunic drape & skirt
   r(12, 9, 9, 7, 'edge'),
-  r(13, 9, 7, 5, 'body'),
-  r(12, 11, 9, 1, 'team'),
-  r(11, 15, 11, 2, 'mid'),
-  // head, hair, brow, eye
+  r(12, 9, 8, 7, 'team'),
+  r(12, 13, 8, 1, 'panel'),
+  r(11, 15, 10, 2, 'team'),
+  // head, hair, brow, eye, team feathered band
   r(14, 3, 6, 6, 'body'),
-  r(13, 2, 7, 2, 'panel'),
+  r(13, 2, 7, 2, 'team'),
+  tri(11, 0, 14, 2, 13, 4, 'team'),
   r(19, 5, 1, 1, 'body'),
   r(18, 5, 1, 1, 'ink'),
   // whirling sling: extended cords, stone pouch with rock
@@ -151,21 +154,21 @@ const SLINGER: SpriteOp[] = [
 // ------------------------------------------------------------ medieval age
 
 const MAN_AT_ARMS: SpriteOp[] = [
-  // kite shield with heraldic cross and gold border
-  r(7, 7, 6, 9, 'body'),
-  tri(6, 16, 14, 16, 10, 21, 'body'),
+  // kite shield with bold heraldic team face, gold border and bright cross
+  r(7, 7, 6, 9, 'team'),
+  tri(6, 16, 14, 16, 10, 21, 'team'),
   r(6, 7, 1, 9, 'accent'),
-  r(9, 8, 2, 8, 'accent'),
-  r(7, 11, 6, 2, 'accent'),
+  r(9, 8, 2, 8, 'highlight'),
+  r(7, 11, 6, 2, 'highlight'),
   // legs in steel mail & poleyns + sabatons
   r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
   r(14, 19, 3, 2, 'light'), r(18, 19, 3, 2, 'light'),
   r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
-  // mail hauberk with layered pauldrons and team tabard
+  // mail hauberk with layered pauldrons and bold team tabard
   r(13, 9, 8, 7, 'edge'),
   r(11, 8, 4, 3, 'light'), r(19, 8, 4, 3, 'light'),
   r(11, 10, 3, 1, 'mid'), r(20, 10, 3, 1, 'mid'),
-  r(14, 10, 4, 6, 'team'),
+  r(13, 10, 6, 6, 'team'),
   r(13, 15, 8, 1, 'panel'),
   // great helm with brass crown band, visor slot and heraldic plume
   r(14, 2, 6, 7, 'light'),
@@ -204,21 +207,21 @@ const KNIGHT_HORSE: SpriteOp[] = [
   r(45, 8, 2, 3, 'panel'),
   r(44, 6, 1, 1, 'ink'),
   r(38, 3, 3, 5, 'mid'),
-  // rider: plate armor, grand helm with crest, heater shield
+  // rider: plate armor, grand helm with crest, bold team heater shield
   r(14, 3, 8, 10, 'edge'),
   r(13, 3, 10, 1, 'team'),
   r(16, 0, 5, 5, 'light'),
-  tri(13, 0, 16, 1, 14, 3, 'highlight'),
+  tri(13, 0, 16, 1, 14, 3, 'team'),
   r(19, 2, 1, 1, 'ink'),
-  r(22, 3, 6, 9, 'body'),
+  r(22, 3, 6, 9, 'team'),
   r(22, 3, 6, 1, 'accent'),
   r(22, 11, 6, 1, 'accent'),
-  r(24, 5, 2, 6, 'light'),
+  r(24, 5, 2, 6, 'highlight'),
   // couched lance: vamplate, shaft, steel spearhead, fluttering pennant
   r(26, 5, 3, 5, 'accent'),
   r(28, 7, 17, 2, 'edge'),
   tri(45, 6, 47, 8, 45, 10, 'light'),
-  tri(33, 1, 43, 3, 33, 6, 'team'),
+  tri(33, 1, 44, 3, 33, 6, 'team'),
 ];
 
 const ARCHER: SpriteOp[] = [
@@ -230,15 +233,15 @@ const ARCHER: SpriteOp[] = [
   // legs + leather boots
   r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
   r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
-  // padded gambeson with team trim
+  // padded gambeson with bold team tunic
   r(13, 9, 8, 7, 'edge'),
-  r(12, 9, 10, 2, 'body'),
-  r(13, 12, 8, 1, 'team'),
+  r(12, 9, 9, 6, 'team'),
+  r(12, 12, 9, 1, 'panel'),
   r(13, 15, 8, 1, 'panel'),
   // archer hood with feather and eye
   r(14, 2, 6, 7, 'edge'),
-  r(14, 3, 6, 1, 'team'),
-  tri(11, 0, 14, 1, 13, 3, 'accent'),
+  r(14, 3, 6, 2, 'team'),
+  tri(10, 0, 14, 1, 12, 4, 'team'),
   r(17, 5, 3, 3, 'body'),
   r(19, 6, 1, 1, 'ink'),
   // recurve longbow: curved limb tips, stave, grip, taut bowstring, nocked arrow
@@ -257,19 +260,20 @@ const COMMANDO: SpriteOp[] = [
   // field radio pack, beacon, whip antenna
   r(6, 7, 6, 8, 'panel'),
   r(7, 0, 1, 7, 'panel'),
-  r(7, 0, 1, 1, 'light'),
+  r(7, 0, 1, 2, 'team'),
   r(8, 9, 1, 1, 'highlight'),
   // legs + combat boots
   r(14, 16, 3, 10, 'mid'), r(18, 16, 3, 10, 'mid'),
   r(13, 26, 4, 1, 'panel'), r(18, 26, 4, 1, 'panel'),
-  // plate carrier with ceramic plates and ammo pouches
+  // plate carrier with ceramic plates, team chest webbing & arm patch
   r(12, 9, 10, 7, 'body'),
   r(13, 10, 8, 4, 'edge'),
+  r(13, 10, 8, 2, 'team'),
   r(13, 14, 2, 2, 'panel'), r(16, 14, 2, 2, 'panel'), r(19, 14, 2, 2, 'panel'),
   r(11, 10, 2, 3, 'team'),
-  // tactical helmet, NVG night vision goggles, comms mic
+  // tactical helmet, NVG night vision goggles, comms mic, team headband
   r(13, 2, 7, 5, 'mid'),
-  r(13, 4, 7, 1, 'team'),
+  r(13, 3, 7, 2, 'team'),
   r(18, 4, 3, 2, 'edge'),
   r(19, 4, 2, 1, 'body'),
   r(17, 6, 3, 1, 'panel'),
@@ -295,17 +299,19 @@ const HEAVY_TANK: SpriteOp[] = [
   r(25, 26, 5, 7, 'mid'), r(27, 28, 1, 3, 'edge'),
   r(32, 26, 5, 7, 'mid'), r(34, 28, 1, 3, 'edge'),
   r(38, 26, 4, 6, 'edge'),
-  // hull with sloped glacis, ERA reactive armor tiles, team insignia
+  // hull with sloped glacis, ERA reactive armor tiles, bold team insignia
   r(4, 18, 34, 7, 'body'),
   tri(34, 24, 44, 24, 42, 18, 'edge'),
   r(15, 18, 4, 3, 'edge'), r(20, 18, 4, 3, 'edge'), r(25, 18, 4, 3, 'edge'),
-  r(6, 19, 8, 4, 'team'),
-  // angular wedge turret, commander cupola, thermal optic, antenna
+  r(5, 19, 10, 4, 'team'),
+  // angular wedge turret, commander cupola, thermal optic, antenna pennant
   r(10, 8, 20, 9, 'edge'),
+  r(12, 10, 16, 2, 'team'),
   tri(29, 8, 33, 12, 29, 16, 'edge'),
   r(12, 5, 5, 3, 'panel'),
   r(15, 6, 2, 1, 'body'),
   r(11, 1, 1, 5, 'panel'),
+  tri(11, 1, 15, 2, 11, 4, 'team'),
   // main smoothbore cannon: armored mantlet, thermal bore sleeve, muzzle brake
   r(29, 10, 4, 5, 'panel'),
   r(33, 11, 10, 3, 'edge'),
@@ -314,17 +320,18 @@ const HEAVY_TANK: SpriteOp[] = [
 ];
 
 const SNIPER: SpriteOp[] = [
-  // textured ghillie cape with ragged camouflage tufts, team shoulder patch
+  // textured ghillie cape with ragged camouflage tufts, team shoulder mantle
   r(5, 8, 17, 13, 'panel'),
   tri(5, 12, 3, 15, 6, 17, 'edge'),
   tri(7, 18, 5, 21, 9, 21, 'mid'),
   tri(12, 20, 10, 23, 14, 21, 'edge'),
-  r(11, 9, 4, 2, 'team'),
+  r(9, 8, 8, 3, 'team'),
   // kneeling legs + tactical boots
   r(13, 22, 5, 4, 'edge'), r(18, 20, 5, 6, 'body'),
   r(12, 26, 6, 1, 'panel'), r(18, 26, 6, 1, 'panel'),
-  // sniper boonie hat, mesh veil, eye
+  // sniper boonie hat, mesh veil, eye, team hatband
   r(13, 4, 8, 2, 'panel'),
+  r(13, 4, 8, 1, 'team'),
   r(14, 2, 6, 3, 'mid'),
   r(17, 5, 3, 3, 'edge'),
   r(18, 6, 1, 1, 'ink'),

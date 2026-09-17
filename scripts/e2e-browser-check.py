@@ -44,7 +44,7 @@ try:
         page.on("console", lambda msg: js_errors.append(msg.text) if msg.type == "error" else None)
 
         print("[E2E] Loading game...")
-        page.goto(URL, wait_until="networkidle", timeout=15000)
+        page.goto(URL, wait_until="domcontentloaded", timeout=15000)
         page.wait_for_timeout(2000)
 
         canvas = page.wait_for_selector("canvas", timeout=5000)

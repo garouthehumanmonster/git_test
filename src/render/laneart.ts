@@ -40,11 +40,8 @@ export function paintLane(g: PixelGraphics, age: Age, _characterPalette?: unknow
   const top = LANE_TOP;
   const bottom = FORE_BOTTOM;
 
-  // A) Distance haze under the horizon, then receding field bands. Transitions
-  // are three dithered rows so the bands read as distance, not as shelves.
-  fill(g, 0, top, LANE_WIDTH, 8, char.panel);
-  ditherBand(g, top + 8, char.panel, terrain.fieldFar);
-  fill(g, 0, top + 11, LANE_WIDTH, 30, terrain.fieldFar);
+  // A) Receding field bands: distant terrain blends smoothly with horizon.
+  fill(g, 0, top, LANE_WIDTH, 41, terrain.fieldFar);
   ditherBand(g, top + 41, terrain.fieldFar, terrain.field);
   fill(g, 0, top + 44, LANE_WIDTH, 32, terrain.field);
   ditherBand(g, top + 76, terrain.field, terrain.fieldNear);
@@ -54,10 +51,17 @@ export function paintLane(g: PixelGraphics, age: Age, _characterPalette?: unknow
   paintTrack(g, age, terrain);
   paintTerrainDetail(g, age, terrain.detail, terrain.accent, char);
 
-  // B) Ink line where the sky meets the ground, and a heavier lip at the front
-  // edge of the lane so the terrain reads as a solid slab.
-  fill(g, 0, top - 2, LANE_WIDTH, 2, char.dark);
-  fill(g, 0, FORE_BOTTOM - 5, LANE_WIDTH, 5, char.dark);
+  // B) Organic horizon ridge blending terrain with the painted backdrop,
+  // and a shaded lip at the front edge.
+  for (let x = 0; x < LANE_WIDTH; x++) {
+    const h = hash(x * 19 + 7);
+    if (h > 0.5) fill(g, x, top - 1, 1, 1, terrain.fieldFar);
+    if (h > 0.82) fill(g, x, top - 2, 1, 1, terrain.fieldFar);
+  }
+  fill(g, 0, FORE_BOTTOM - 3, LANE_WIDTH, 3, char.dark);
+  for (let x = 0; x < LANE_WIDTH; x++) {
+    if (hash(x * 23 + 11) > 0.5) fill(g, x, FORE_BOTTOM - 4, 1, 1, char.dark);
+  }
 
   // C) Corner vignettes, kept to a handful of dithered columns at each end.
   for (let i = 0; i < 18; i++) {
