@@ -82,6 +82,7 @@ interface UnitGfx {
   flashUntilMs: number;
   currentVet: number;
   dying: boolean;
+  dir?: number;
   /** Screen-space knockback push from the last hit, in px. */
   knock: number;
   /** Ticks left of the current attack's wind-up, used to time the weapon FX. */
@@ -881,20 +882,33 @@ export class GameScene extends Phaser.Scene {
       if (!seen.has(id)) {
         if (!g.dying) {
           g.dying = true;
-          // Death: a red burst, a full 90 degree topple and a 250ms fade.
+          // Death: a red burst, a dramatic knock-back tumble, ground bounce, and 380ms dissolve.
           g.hpBar.setVisible(false);
           g.hpBarBg.setVisible(false);
           g.chev1.setVisible(false);
           g.chev2.setVisible(false);
           this.burst.emitParticleAt(g.container.x, g.container.y - 8, 16);
+          const dir = g.dir || 1;
           this.tweens.add({
             targets: g.container,
-            alpha: 0,
-            angle: 90,
-            y: g.container.y + 6,
-            duration: 250,
-            ease: 'Sine.easeIn',
-            onComplete: () => g.container.destroy(),
+            x: g.container.x - dir * 16,
+            y: g.container.y - 12,
+            angle: -dir * 75,
+            duration: 160,
+            ease: 'Cubic.easeOut',
+            onComplete: () => {
+              this.dust.emitParticleAt(g.container.x, g.container.y + 4, 6);
+              this.tweens.add({
+                targets: g.container,
+                alpha: 0,
+                y: g.container.y + 14,
+                scaleX: 0.8,
+                scaleY: 0.35,
+                duration: 220,
+                ease: 'Quad.easeIn',
+                onComplete: () => g.container.destroy(),
+              });
+            },
           });
         }
         this.unitGfx.delete(id);
@@ -994,64 +1008,118 @@ export class GameScene extends Phaser.Scene {
       if (Math.abs(g.knock) < 0.05) g.knock = 0;
     }
 
-    const walkPhase = (u.ageTicks + u.animSeed * 0.001) * 0.45;
-    if (u.state === 'walk') {
-      // Walk cycle: a 3px bob, a leg-tilt lean and a per-unit phase offset so a
-      // marching column never moves in lockstep.
-      const bob = Math.sin(walkPhase);
-      g.sprite.y = bob * 3 - 2;
-      g.sprite.x = 0;
-      g.sprite.angle = bob * 4 * u.dir;
-      g.sprite.setScale(g.baseScale, g.baseScale * (1 + bob * 0.035));
+    g.dir = u.dir;
+
+    if (this.sim.result !== 'playing') {
+      const isWinner = (this.sim.result === 'win' && u.side === 'player') || (this.sim.result === 'loss' && u.side === 'ai');
+      if (isWinner) {
+        // Joyous victory hopping & cheering
+        const cheerPhase = (this.time.now * 0.008 + u.animSeed * 0.01) % (Math.PI * 2);
+        const cheerHop = Math.max(0, Math.sin(cheerPhase));
+        g.sprite.y = -2 - cheerHop * 10;
+        g.sprite.x = 0;
+        g.sprite.angle = Math.sin(cheerPhase) * 10;
+        g.sprite.setScale(g.baseScale * (1 - cheerHop * 0.08), g.baseScale * (1 + cheerHop * 0.15));
+      } else {
+        // Dejected defeat slump
+        g.sprite.y = 4;
+        g.sprite.x = 0;
+        g.sprite.angle = u.dir * -24;
+        g.sprite.setScale(g.baseScale * 1.05, g.baseScale * 0.85);
+      }
+    } else if (u.state === 'walk') {
       if (u.reserve) {
-        // Reserves hold formation: steady, weapons down, no bounce.
-        g.sprite.y = -2 + bob * 0.6;
-        g.sprite.angle = bob * 1.2 * u.dir;
-        g.sprite.setScale(g.baseScale);
+        // Reserves hold formation: steady, weapons held, organic breathing
+        const breath = Math.sin(this.time.now * 0.0035 + u.animSeed);
+        g.sprite.y = -2 + breath * 1.2;
+        g.sprite.x = 0;
+        g.sprite.angle = breath * 1.5 * u.dir;
+        g.sprite.setScale(g.baseScale * (1 - breath * 0.02), g.baseScale * (1 + breath * 0.03));
+      } else {
+        // Natural bipedal/quadruped stride: vertical hop on push-off, squash on heel plant, pendulum leg lean
+        const walkPhase = (u.ageTicks + u.animSeed * 0.001) * 0.48;
+        const sinVal = Math.sin(walkPhase);
+        const strideHop = -Math.abs(sinVal) * 5;
+        const strideTilt = sinVal * 6.5 * u.dir;
+        const footContact = Math.abs(sinVal) < 0.25;
+
+        g.sprite.y = strideHop - 2;
+        g.sprite.x = u.dir * (footContact ? 1 : -0.5);
+        g.sprite.angle = strideTilt;
+
+        const stretch = footContact ? -0.06 : 0.05;
+        g.sprite.setScale(g.baseScale * (1 - stretch), g.baseScale * (1 + stretch));
+
+        if (footContact && u.ageTicks % 5 === 0) {
+          this.dust.emitParticleAt(u.x - u.dir * 6, this.unitGroundY(u), 1);
+        }
       }
     } else if (u.state === 'fight') {
-      g.sprite.y = -2;
       const atk = 1 - u.cooldown / Math.max(1, u.def.attackRate);
       if (u.def.role === 'ranged') {
-        // Ranged: weapon drawn forward, then a sharp recoil.
-        if (atk < 0.12) {
-          g.sprite.x = -u.dir * 4;
-          g.sprite.angle = u.dir * -7;
-          this.spawnAttackFx(u, 'muzzle');
-        } else if (atk < 0.4) {
-          g.sprite.x = u.dir * 3;
-          g.sprite.angle = 0;
+        // Ranged 3-phase: draw bow/aim rifle, release snap + muzzle flash, reload recovery
+        if (atk < 0.28) {
+          const p = atk / 0.28;
+          g.sprite.x = -u.dir * (2 + p * 4);
+          g.sprite.y = -2 - p * 2;
+          g.sprite.angle = -u.dir * (3 + p * 8);
+          g.sprite.setScale(g.baseScale * 0.94, g.baseScale * 1.05);
+        } else if (atk < 0.50) {
+          g.sprite.x = u.dir * 4;
+          g.sprite.y = -2;
+          g.sprite.angle = u.dir * 5;
+          g.sprite.setScale(g.baseScale * 1.08, g.baseScale * 0.94);
+          if (atk < 0.34) this.spawnAttackFx(u, 'muzzle');
         } else {
-          g.sprite.x = 0;
-          g.sprite.angle = 0;
+          const p = (atk - 0.50) / 0.50;
+          g.sprite.x = u.dir * (4 * (1 - p));
+          g.sprite.y = -2;
+          g.sprite.angle = u.dir * (5 * (1 - p));
+          g.sprite.setScale(g.baseScale);
         }
       } else if (u.def.role === 'tank') {
-        // Tank: a heavy shoulder-first shove with a ground shock on contact.
-        if (atk < 0.16) {
-          g.sprite.x = -u.dir * 3;
-          g.sprite.angle = u.dir * -3;
-        } else if (atk < 0.34) {
-          g.sprite.x = u.dir * 6;
-          g.sprite.angle = u.dir * 4;
-          this.spawnAttackFx(u, 'shock');
+        // Tank 3-phase: heavy rear-up, devastating ground slam / battering ram, recovery
+        if (atk < 0.25) {
+          const p = atk / 0.25;
+          g.sprite.x = -u.dir * (2 + p * 5);
+          g.sprite.y = -2 - p * 6;
+          g.sprite.angle = -u.dir * (2 + p * 6);
+          g.sprite.setScale(g.baseScale * 0.95, g.baseScale * 1.08);
+        } else if (atk < 0.52) {
+          g.sprite.x = u.dir * 9;
+          g.sprite.y = 1;
+          g.sprite.angle = u.dir * 6;
+          g.sprite.setScale(g.baseScale * 1.15, g.baseScale * 0.88);
+          if (atk < 0.32) this.spawnAttackFx(u, 'shock');
         } else {
-          g.sprite.x = 0;
-          g.sprite.angle = 0;
+          const p = (atk - 0.52) / 0.48;
+          g.sprite.x = u.dir * (9 * (1 - p));
+          g.sprite.y = -2 + (3 * (1 - p));
+          g.sprite.angle = u.dir * (6 * (1 - p));
+          g.sprite.setScale(g.baseScale * (1 + 0.05 * (1 - p)));
         }
-      } else if (atk < 0.14) {
-        // Melee wind-up.
-        g.sprite.x = -u.dir * 3;
-        g.sprite.angle = u.dir * -6;
-      } else if (atk < 0.3) {
-        // Melee slash: lunge forward with the swing arc.
-        g.sprite.x = u.dir * 6;
-        g.sprite.angle = u.dir * 8;
-        this.spawnAttackFx(u, 'slash');
       } else {
-        g.sprite.x = 0;
-        g.sprite.angle = 0;
+        // Melee 3-phase: weapon backswing anticipation, lunging slash, follow-through
+        if (atk < 0.25) {
+          const p = atk / 0.25;
+          g.sprite.x = -u.dir * (2 + p * 6);
+          g.sprite.y = -2 + p * 1;
+          g.sprite.angle = -u.dir * (4 + p * 12);
+          g.sprite.setScale(g.baseScale * 1.08, g.baseScale * 0.90);
+        } else if (atk < 0.50) {
+          g.sprite.x = u.dir * 11;
+          g.sprite.y = -4;
+          g.sprite.angle = u.dir * 14;
+          g.sprite.setScale(g.baseScale * 1.12, g.baseScale * 0.96);
+          if (atk < 0.32) this.spawnAttackFx(u, 'slash');
+        } else {
+          const p = (atk - 0.50) / 0.50;
+          g.sprite.x = u.dir * (11 * (1 - p));
+          g.sprite.y = -2;
+          g.sprite.angle = u.dir * (14 * (1 - p));
+          g.sprite.setScale(g.baseScale);
+        }
       }
-      g.sprite.setScale(g.baseScale);
     } else {
       g.sprite.y = -2; g.sprite.x = 0; g.sprite.angle = 0; g.sprite.setScale(g.baseScale);
     }
@@ -1065,6 +1133,10 @@ export class GameScene extends Phaser.Scene {
     if (this.time.now < g.flashUntilMs) {
       // Time-based flash: exactly 60ms at any render rate, then the art returns.
       g.sprite.setTint(0xffffff);
+      g.sprite.x += -u.dir * 4;
+      g.sprite.angle += -u.dir * 6;
+      g.sprite.scaleX *= 1.12;
+      g.sprite.scaleY *= 0.90;
     } else if (isEnemyStasis) {
       // Temporal stasis: icy cyan freeze
       g.sprite.setTint(0x5ce1e6);
