@@ -5,8 +5,15 @@
  * with Web Audio — zero external assets.
  */
 
+import {
+  MUSIC_PATTERNS, BAR_STEPS, PHRASE_BARS, pitchClassOf, triadIntervals,
+  type AgeKey,
+} from './patterns';
+
 type MusicState = 'menu' | 'playing' | 'win' | 'lose';
-export type AgeKey = 'stone' | 'medieval' | 'modern';
+
+// Re-exported so existing `import { AgeKey } from '../audio/audio'` keeps working.
+export type { AgeKey };
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -36,72 +43,7 @@ export class AudioEngine {
   private musicMuted = false;
   private tension = 0; // 0..1, drives filter + lead intensity when base is low
 
-  // Per-age patterns (16-step bars, cycling for variety).
-  // Bass: root/fifth pattern in a key befitting the age.
-  private readonly patterns: Record<AgeKey, {
-    bpm: number;
-    bass: string[][]; lead: string[][]; arp: string[][]; drums: string[][];
-    waveBass: OscillatorType; waveLead: OscillatorType; wavePad: OscillatorType;
-  }> = {
-    stone: {
-      bpm: 108,
-      waveBass: 'triangle', waveLead: 'square', wavePad: 'sawtooth',
-      bass: [
-        ['A1','r','r','A1','E2','r','A1','r','G1','r','r','G1','D2','r','G1','r'],
-        ['A1','r','E2','r','A1','r','E2','A1','G1','r','D2','r','G1','r','D2','G1'],
-      ],
-      lead: [
-        ['r','C4','E4','r','G4','r','E4','C4','r','Bb3','C4','r','Eb4','G4','r','r'],
-        ['r','A3','C4','E4','r','G4','E4','C4','Bb3','r','C4','Eb4','r','G4','E4','C4'],
-      ],
-      arp: [
-        ['r','r','r','r','r','r','r','r','r','r','r','r','r','r','r','r'],
-      ],
-      drums: [
-        ['K','r','r','r','K','r','H','r','K','r','r','K','r','H','K','H'],
-        ['K','r','H','r','K','H','K','H','K','r','H','K','S','H','K','H'],
-      ],
-    },
-    medieval: {
-      bpm: 126,
-      waveBass: 'triangle', waveLead: 'square', wavePad: 'triangle',
-      bass: [
-        ['D2','r','A2','r','D2','r','A2','r','G2','r','D2','r','G2','r','A2','r'],
-        ['D2','r','A2','F#2','G2','r','D2','r','Bb1','r','F2','r','A2','r','D2','A2'],
-      ],
-      lead: [
-        ['r','D4','F#4','A4','r','A4','F#4','D4','r','C4','Eb4','G4','r','Bb4','A4','F#4'],
-        ['F#4','r','A4','D5','r','A4','F#4','D4','G4','r','Bb4','D5','r','A4','F#4','D4'],
-      ],
-      arp: [
-        ['D3','r','A3','r','F#3','r','A3','r','G3','r','D3','r','Bb3','r','A3','r'],
-      ],
-      drums: [
-        ['K','r','H','r','K','H','K','H','K','r','H','r','S','H','K','H'],
-        ['K','H','r','H','K','H','K','H','K','H','r','K','S','H','K','H'],
-      ],
-    },
-    modern: {
-      bpm: 148,
-      waveBass: 'sawtooth', waveLead: 'square', wavePad: 'sawtooth',
-      bass: [
-        ['E1','r','G1','r','B1','r','E2','r','A1','r','C2','r','E2','r','B1','r'],
-        ['E1','B1','r','G1','B1','r','E2','B1','A1','E2','r','C2','E2','B1','r','G1'],
-      ],
-      lead: [
-        ['r','E5','r','G5','r','B5','r','E6','r','G5','r','E5','r','B5','G5','E5'],
-        ['B4','r','E5','G5','r','B5','E6','r','A5','r','G5','E5','r','B5','r','E5'],
-      ],
-      arp: [
-        ['E3','G3','B3','E4','G3','B3','E4','G4','A3','C4','E4','A4','C4','E4','G4','B4'],
-        ['E3','B3','G3','E4','B3','G3','E4','B4','A3','E4','C4','A4','E4','C4','B4','G4'],
-      ],
-      drums: [
-        ['K','r','H','H','K','H','K','H','K','H','H','K','S','H','K','H'],
-        ['K','H','S','H','K','H','K','S','K','H','S','K','S','H','K','H'],
-      ],
-    },
-  };
+  private readonly patterns = MUSIC_PATTERNS;
 
   async init(): Promise<void> {
     if (this.ctx) return;
@@ -485,8 +427,8 @@ export class AudioEngine {
 
   private scheduleStep(t: number): void {
     const pat = this.patterns[this.musicAge];
-    const idx = this.step % 16;
-    const barVariant = Math.floor(this.step / 16) % 2;
+    const idx = this.step % BAR_STEPS;
+    const bar = Math.floor(this.step / BAR_STEPS) % PHRASE_BARS;
 
     if (this.musicState === 'win' || this.musicState === 'lose') {
       if (idx === 0) this.playBass(t, this.musicState === 'win' ? 'C3' : 'C2', pat.waveBass, 0.3);
@@ -497,29 +439,29 @@ export class AudioEngine {
 
     // Pad: long sustained chord on downbeats (very subtle, fills space)
     if (idx === 0 || idx === 8) {
-      const chord = pat.bass[0]![idx]!;
+      const chord = pat.bass[bar % pat.bass.length]![idx]!;
       if (chord && chord !== 'r') this.playPad(t, chord, pat.wavePad);
     }
 
     // Bass
-    const bRow = pat.bass[barVariant % pat.bass.length]!;
+    const bRow = pat.bass[bar % pat.bass.length]!;
     const b = bRow[idx];
     if (b && b !== 'r') this.playBass(t, b, pat.waveBass, 0.35 + this.tension * 0.1);
 
     // Lead — louder/earlier during tension
-    const lRow = pat.lead[barVariant % pat.lead.length]!;
+    const lRow = pat.lead[bar % pat.lead.length]!;
     const l = lRow[idx];
     if (l && l !== 'r') this.playLead(t, l, pat.waveLead, 0.16 + this.tension * 0.08);
 
     // Arp (medieval/modern only — stone stays empty for primal feel)
     if (this.musicAge !== 'stone') {
-      const aRow = pat.arp[barVariant % pat.arp.length]!;
+      const aRow = pat.arp[bar % pat.arp.length]!;
       const a = aRow[idx];
       if (a && a !== 'r') this.playArp(t, a, 0.14);
     }
 
     // Drums
-    const dRow = pat.drums[barVariant % pat.drums.length]!;
+    const dRow = pat.drums[bar % pat.drums.length]!;
     const d = dRow[idx];
     const drumK = 0.35 + this.tension * 0.1;
     if (d === 'K') this.playKick(t, drumK);
@@ -545,9 +487,12 @@ export class AudioEngine {
   }
 
   private playPad(t: number, bassNote: string, type: OscillatorType): void {
-    // Play a soft sustained 5th chord under the bass.
+    // A sustained diatonic triad under the bass, taken from the age's own scale
+    // so the pad follows the harmony instead of droning a hollow root+fifth.
     const root = noteToFreq(bassNote);
-    const freqs = [root * 1, root * 1.5, root * 2];
+    const pc = pitchClassOf(bassNote);
+    const ratios = pc === null ? [1, 1.5, 2] : triadIntervals(pc, this.patterns[this.musicAge].scale);
+    const freqs = ratios.map((r) => root * r);
     for (const f of freqs) {
       const osc = this.ctx!.createOscillator();
       osc.type = type;

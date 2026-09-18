@@ -2,9 +2,14 @@ import Phaser from 'phaser';
 import { BootScene } from './render/BootScene';
 import { MenuScene } from './render/MenuScene';
 import { GameScene } from './render/GameScene';
+import { installBootKeyListener } from './render/inputBuffer';
 import { LANE_WIDTH, LANE_HEIGHT } from './sim/types';
 import { initCrazyGames, crazyLoadingStart } from './crazygames';
 import './style.css';
+
+// Claim the keyboard before any scene exists: presses typed while the boot
+// or menu scene has the floor would otherwise be lost outright.
+installBootKeyListener();
 
 async function bootstrap(): Promise<void> {
   await initCrazyGames();

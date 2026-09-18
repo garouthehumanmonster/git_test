@@ -42,3 +42,69 @@ jobs:
 
       - name: Build Production Bundle
         run: npm run build
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+
+      - name: Build Production Bundle
+        run: npm run build
+
+      # Drives the real bundle with real key events: verifies the canvas mounts,
+      # that a mid-match hotkey changes the speed chip, and that presses typed
+      # during scene boot are replayed instead of dropped.
+      # continue-on-error so the next step can publish the output, then the
+      # job still fails. The Actions log endpoint is not reachable from every
+      # environment, so a failure posts its own tail to the PR.
+      - name: Browser E2E (real input cycle)
+        id: e2e
+        continue-on-error: true
+        # pipefail is essential: without it the step reports tee's exit code
+        # and a failing E2E shows up green.
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee e2e-output.txt
+
+      - name: Publish E2E output on failure
+        if: steps.e2e.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo '### browser-e2e failed'
+            echo
+            echo '```'
+            tail -n 80 e2e-output.txt
+            echo '```'
+          } > e2e-report.md
+          gh pr comment "${{ github.event.pull_request.number }}" --body-file e2e-report.md
+
+      - name: Fail the job if E2E failed
+        if: steps.e2e.outcome == 'failure'
+        run: exit 1

@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import { claimBootKeys, type KeyEvent } from './inputBuffer';
+import { dispatchKey, type InputActions, type InputModifiers, type KeyPhase } from './inputActions';
+import { nextSpeed } from './affordance';
 import {
   type Intent,
   type SimState,
@@ -23,6 +26,7 @@ import {
   canChronoSurge,
   canWarCry,
   canEvolve,
+  evolveBlockReason,
   canSpawn,
   canUpgrade,
   createInitialState,
@@ -111,6 +115,9 @@ export class GameScene extends Phaser.Scene {
   private tickAccumMs = 0;
   private speedMul = 1;
   private paused = false;
+  private inputActions!: InputActions;
+  /** Set in create(): the ad-wrapped restart that Enter and the results card share. */
+  private doRestart!: () => void;
   private playerBase!: Phaser.GameObjects.Image;
   private aiBase!: Phaser.GameObjects.Image;
   private playerFlag!: Phaser.GameObjects.Image;
@@ -356,45 +363,72 @@ export class GameScene extends Phaser.Scene {
       this.hud.announce('ENDLESS SKIRMISH', 'hold the lane as long as you can', 2200);
     }
 
-    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
-      const handleMuteKey = () => {
-        if (e.shiftKey) {
-          const vMuted = voice.toggleVoice();
-          this.hud.announce('VOICE', vMuted ? 'MUTED' : 'ENABLED', 1000);
-        } else if (e.ctrlKey || e.metaKey) {
-          const mMuted = audio.toggleMusic();
-          this.hud.announce('MUSIC', mMuted ? 'MUTED' : 'ENABLED', 1000);
-        } else {
-          this.hud.setMusic(!audio.toggleMute());
-        }
-      };
-      if (e.key === 'p' || e.key === 'P' || e.code === 'Escape') { this.togglePause(); return; }
-      if (e.key === 'f' || e.key === 'F') { this.toggleFullscreen(); return; }
-      if (this.sim.result !== 'playing') {
-        if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-          const cleared = this.sim.result === 'win' || this.sim.result === 'draw';
-          if (cleared && this.stageId > 0 && this.stageId < STAGES.length) this.gotoStage(this.stageId + 1);
-          else safeRestart();
-        } else if (e.code === 'Space' || e.key === 'r' || e.key === 'R') safeRestart();
-        else if (e.key === 'm' || e.key === 'M') handleMuteKey();
-        return;
-      }
-      if (e.key === '1') this.trySpawn('player', 'swarm');
-      else if (e.key === '2') this.trySpawn('player', 'tank');
-      else if (e.key === '3') this.trySpawn('player', 'ranged');
-      else if (e.key === 'e' || e.key === 'E') this.tryEvolve('player');
-      else if (e.key === 'u' || e.key === 'U') this.tryUpgrade('forge');
-      else if (e.key === 'y' || e.key === 'Y') this.tryUpgrade('armor');
-      else if (e.key === 't' || e.key === 'T') this.tryTurret();
-      else if (e.key === 'q' || e.key === 'Q') this.tryChronoSurge();
-      else if (e.key === 'w' || e.key === 'W') this.tryWarCry();
-      // C, not R: R is already the results-card restart.
-      else if (e.key === 'c' || e.key === 'C') this.tryReinforce();
-      else if (e.key === 'm' || e.key === 'M') handleMuteKey();
-      // Space is the superweapon: it is the one action worth a fat hotkey.
-      else if (e.key === ' ') this.tryUltimate();
-      else if (e.key === 'x' || e.key === 'X') this.cycleSpeed();
+    this.doRestart = safeRestart;
+    this.inputActions = {
+      togglePause: () => this.togglePause(),
+      toggleFullscreen: () => this.toggleFullscreen(),
+      spawn: (kind) => this.trySpawn('player', kind),
+      evolve: () => this.tryEvolve('player'),
+      upgrade: (which) => this.tryUpgrade(which),
+      turret: () => this.tryTurret(),
+      chronoSurge: () => this.tryChronoSurge(),
+      warCry: () => this.tryWarCry(),
+      reinforce: () => this.tryReinforce(),
+      ultimate: () => this.tryUltimate(),
+      cycleSpeed: () => this.cycleSpeed(),
+      muteKey: (mods) => this.handleMuteKey(mods),
+      resultsAdvance: () => this.resultsAdvance(),
+      resultsRestart: () => this.doRestart(),
+    };
+    // The scene can act on input now: claim the keyboard and replay whatever
+    // was typed before it could.
+    this.claimKeyboard();
+  }
+
+  // ---------------------------------------------------------------
+  // Input
+  // ---------------------------------------------------------------
+
+  /**
+   * Take over the app-wide keyboard and replay anything typed while the boot
+   * or menu scene had the floor.
+   */
+  private claimKeyboard(): void {
+    for (const buffered of claimBootKeys((event) => this.runKeyEvent(event))) {
+      this.runKeyEvent(buffered);
+    }
+  }
+
+  shutdown(): void {
+    // Release the keyboard so presses between scenes are buffered, not lost.
+    claimBootKeys(null);
+  }
+
+  private handleMuteKey(mods: InputModifiers): void {
+    if (mods.shiftKey) {
+      const vMuted = voice.toggleVoice();
+      this.hud.announce('VOICE', vMuted ? 'MUTED' : 'ENABLED', 1000);
+    } else if (mods.ctrlKey || mods.metaKey) {
+      const mMuted = audio.toggleMusic();
+      this.hud.announce('MUSIC', mMuted ? 'MUTED' : 'ENABLED', 1000);
+    } else {
+      this.hud.setMusic(!audio.toggleMute());
+    }
+  }
+
+  private runKeyEvent(event: KeyEvent): void {
+    const phase: KeyPhase = this.sim.result === 'playing' ? 'playing' : 'results';
+    dispatchKey(event.key, event.code, phase, this.inputActions, {
+      shiftKey: event.shiftKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
     });
+  }
+
+  private resultsAdvance(): void {
+    const cleared = this.sim.result === 'win' || this.sim.result === 'draw';
+    if (cleared && this.stageId > 0 && this.stageId < STAGES.length) this.gotoStage(this.stageId + 1);
+    else this.doRestart();
   }
 
   private applyAmbient(age: 'stone' | 'medieval' | 'modern'): void {
@@ -673,12 +707,15 @@ export class GameScene extends Phaser.Scene {
 
   private tryEvolve(side: 'player' | 'ai'): void {
     if (side !== 'player') return;
-    if (canEvolve(this.sim, 'player')) {
+    const blocked = evolveBlockReason(this.sim, 'player');
+    if (blocked === null) {
       this.pendingIntents.push({ type: 'evolve', side: 'player' });
       audio.sfxEvolve();
-    } else {
-      audio.sfxError();
+      return;
     }
+    // Never a silent refusal: E has two gates and the banner used to name one.
+    audio.sfxError();
+    this.hud.announce('CANNOT EVOLVE', blocked, 1600);
   }
 
   private tryUpgrade(which: 'forge' | 'armor'): void {
@@ -698,7 +735,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cycleSpeed(): void {
-    this.speedMul = this.speedMul === 1 ? 2 : this.speedMul === 2 ? 3 : 1;
+    this.speedMul = nextSpeed(this.speedMul);
+    // Push the new multiplier to the chip immediately, so a press replayed
+    // during boot is visibly acknowledged before the next update() tick.
+    this.hud.setPaused(this.paused, this.speedMul);
     audio.sfxClick();
   }
 
@@ -1165,6 +1205,14 @@ export class GameScene extends Phaser.Scene {
     } else {
       g.sprite.y = -2; g.sprite.x = 0; g.sprite.angle = 0; g.sprite.setScale(g.baseScale);
     }
+
+    // Ground the unit. The shadow is a separate child pinned to the foot line,
+    // so while the sprite hopped the shadow stayed exactly where it was — which
+    // is what made a moving unit read as a sticker lifting off its own shadow.
+    // Shrinking and fading it with height plants the unit in the lane.
+    const airborne = Math.min(1, Math.max(0, -g.sprite.y / 9));
+    g.shadow.setScale(1 - airborne * 0.3, 1);
+    g.shadow.setAlpha(1 - airborne * 0.45);
 
     const unitPalette = paletteFor(u.def.age);
     const isSurgeActive = (this.sim.chronoSurgeTicks ?? 0) > 0;
