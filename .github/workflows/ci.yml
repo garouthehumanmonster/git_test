@@ -85,7 +85,11 @@ jobs:
       - name: Browser E2E (real input cycle)
         id: e2e
         continue-on-error: true
-        run: npm run test:e2e 2>&1 | tee e2e-output.txt
+        # pipefail is essential: without it the step reports tee's exit code
+        # and a failing E2E shows up green.
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee e2e-output.txt
 
       - name: Publish E2E output on failure
         if: steps.e2e.outcome == 'failure'
