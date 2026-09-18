@@ -43,6 +43,9 @@ KEEP = os.environ.get("E2E_KEEP_SCREENSHOTS", "0") == "1"
 
 # Logical canvas size; the game is authored at 960x540 and letterboxed to fit.
 LOGICAL_W = 960
+LOGICAL_H = 540
+# Stage 1 card, in logical canvas coordinates.
+STAGE_CARD = (140, 236)
 # The speed chip is right-anchored at w-78 in canvas coordinates.
 CHIP_RIGHT = LOGICAL_W - 78
 CHIP_W = 96
@@ -87,6 +90,29 @@ def wait_for_server(timeout=45.0):
     return False
 
 
+def to_page(box, lx, ly):
+    """Map logical canvas coordinates onto page coordinates.
+
+    The canvas is letterboxed to fit its container, so absolute page
+    coordinates are wrong whenever it is scaled or offset. The first CI run
+    failed here: the click inherited from the old script used raw page
+    coordinates, missed the stage card, no match ever started, and the speed
+    chip check then reported a false failure.
+    """
+    return (
+        box["x"] + (lx / LOGICAL_W) * box["width"],
+        box["y"] + (ly / LOGICAL_H) * box["height"],
+    )
+
+
+def canvas_box(page):
+    canvas = page.wait_for_selector("canvas", timeout=10000)
+    assert canvas is not None, "Phaser canvas element not found"
+    box = canvas.bounding_box()
+    assert box and box["width"] > 400 and box["height"] > 200, f"canvas size abnormal: {box}"
+    return box
+
+
 def chip_clip(box):
     """Page-space rectangle covering the speed chip, from the canvas bbox."""
     scale = box["width"] / LOGICAL_W
@@ -105,10 +131,13 @@ def chip_hash(page, box):
 
 
 def start_match(page):
+    """Load the menu, click the stage 1 card, return the canvas bbox."""
     page.goto(URL, wait_until="domcontentloaded", timeout=20000)
     page.wait_for_timeout(1800)
-    page.mouse.click(140, 236)  # stage 1 card
+    box = canvas_box(page)
+    page.mouse.click(*to_page(box, *STAGE_CARD))
     page.wait_for_timeout(2500)
+    return box
 
 
 def main():
@@ -137,7 +166,10 @@ def main():
             return 1
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(channel=CHANNEL, headless=HEADLESS)
+            launch_args = []
+            if hasattr(os, "geteuid") and os.geteuid() == 0:
+                launch_args.append("--no-sandbox")
+            browser = p.chromium.launch(channel=CHANNEL, headless=HEADLESS, args=launch_args)
             page = browser.new_page(viewport={"width": 960, "height": 540})
 
             js_errors = []
@@ -145,12 +177,10 @@ def main():
             page.on("console", lambda m: js_errors.append(m.text) if m.type == "error" else None)
 
             # --- 1. canvas -------------------------------------------------
-            start_match(page)
-            canvas = page.wait_for_selector("canvas", timeout=5000)
-            assert canvas is not None, "Phaser canvas element not found"
-            box = canvas.bounding_box()
-            assert box and box["width"] > 400 and box["height"] > 200, f"canvas size abnormal: {box}"
-            print(f"[E2E] [OK] canvas {box['width']:.0f}x{box['height']:.0f}")
+            box = start_match(page)
+            print(f"[E2E] [OK] canvas {box['width']:.0f}x{box['height']:.0f} at "
+                  f"({box['x']:.0f},{box['y']:.0f}); stage card clicked at "
+                  f"{to_page(box, *STAGE_CARD)[0]:.0f},{to_page(box, *STAGE_CARD)[1]:.0f}")
 
             # --- 2. a mid-match hotkey is handled --------------------------
             before = chip_hash(page, box)
@@ -167,13 +197,13 @@ def main():
             # create() could possibly have finished building the scene.
             page.goto(URL, wait_until="domcontentloaded", timeout=20000)
             page.wait_for_timeout(1800)
-            page.mouse.click(140, 236)
+            boot_box = canvas_box(page)
+            page.mouse.click(*to_page(boot_box, *STAGE_CARD))
             for _ in range(2):
                 page.keyboard.press("x")
                 page.wait_for_timeout(40)
             page.wait_for_timeout(2500)
-            canvas = page.wait_for_selector("canvas", timeout=5000)
-            box = canvas.bounding_box()
+            box = canvas_box(page)
             booted = chip_hash(page, box)
             if booted == before:
                 failures.append("presses typed during scene boot were dropped (chip still at 1x)")
@@ -197,6 +227,8 @@ def main():
         terminate_tree(proc)
 
     if failures:
+        print("[E2E FAILED]  hashes: before=%s after=%s booted=%s" % (
+            globals().get("before"), globals().get("after"), globals().get("booted")))
         print("[E2E FAILED]")
         for f in failures:
             print("  -", f)
