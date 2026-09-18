@@ -89,3 +89,72 @@ export class InputBuffer {
     this.queue = [];
   }
 }
+
+/** A key press normalised to the fields the game actually reads. */
+export interface KeyEvent {
+  key: string;
+  code: string;
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}
+
+export function normalizeKey(event: KeyLike): KeyEvent {
+  return {
+    key: event.key,
+    code: event.code ?? '',
+    shiftKey: event.shiftKey ?? false,
+    ctrlKey: event.ctrlKey ?? false,
+    metaKey: event.metaKey ?? false,
+  };
+}
+
+/* ------------------------------------------------------------------ *
+ * App-wide boot capture.
+ *
+ * A scene-local listener is not early enough. The game boots into BootScene
+ * and MenuScene first, so a player who clicks a stage card and immediately
+ * starts typing is pressing keys while no scene that cares is listening —
+ * and an event with no listener is gone the instant it fires, which no amount
+ * of later buffering can recover. CI proved this: with the listener attached
+ * in GameScene.init(), mid-match keys worked but boot keys were still lost.
+ *
+ * So exactly one listener exists for the whole app. It buffers until a scene
+ * claims the keyboard, then forwards directly.
+ * ------------------------------------------------------------------ */
+
+const bootKeys = new InputBuffer();
+let activeHandler: ((event: KeyEvent) => void) | null = null;
+let listenerInstalled = false;
+
+function nowMs(): number {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+function onWindowKeyDown(event: KeyboardEvent): void {
+  const normalized = normalizeKey(event);
+  if (activeHandler) activeHandler(normalized);
+  else bootKeys.push(normalized, nowMs());
+}
+
+/** Install the single app-wide key listener. Idempotent. */
+export function installBootKeyListener(): void {
+  if (listenerInstalled || typeof window === 'undefined') return;
+  listenerInstalled = true;
+  window.addEventListener('keydown', onWindowKeyDown);
+}
+
+/**
+ * Take ownership of the keyboard, and hand back every press captured before
+ * this moment (oldest first) so the caller can replay it. Pass null to
+ * release, e.g. when the scene shuts down.
+ */
+export function claimBootKeys(handler: ((event: KeyEvent) => void) | null): KeyEvent[] {
+  activeHandler = handler;
+  return handler === null ? [] : bootKeys.drain(nowMs());
+}
+
+/** How many presses are parked waiting for a scene to claim them. */
+export function pendingBootKeyCount(): number {
+  return bootKeys.size();
+}

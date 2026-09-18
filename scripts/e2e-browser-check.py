@@ -153,6 +153,7 @@ def main():
         start_new_session=hasattr(os, "killpg"),
     )
     failures = []
+    hashes = {"before": None, "after": None, "booted": None}
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -183,10 +184,10 @@ def main():
                   f"{to_page(box, *STAGE_CARD)[0]:.0f},{to_page(box, *STAGE_CARD)[1]:.0f}")
 
             # --- 2. a mid-match hotkey is handled --------------------------
-            before = chip_hash(page, box)
+            hashes["before"] = before = chip_hash(page, box)
             page.keyboard.press("x")
             page.wait_for_timeout(400)
-            after = chip_hash(page, box)
+            hashes["after"] = after = chip_hash(page, box)
             if before == after:
                 failures.append("speed chip did not change when 'x' was pressed mid-match")
             else:
@@ -204,7 +205,7 @@ def main():
                 page.wait_for_timeout(40)
             page.wait_for_timeout(2500)
             box = canvas_box(page)
-            booted = chip_hash(page, box)
+            hashes["booted"] = booted = chip_hash(page, box)
             if booted == before:
                 failures.append("presses typed during scene boot were dropped (chip still at 1x)")
             else:
@@ -227,8 +228,7 @@ def main():
         terminate_tree(proc)
 
     if failures:
-        print("[E2E FAILED]  hashes: before=%s after=%s booted=%s" % (
-            globals().get("before"), globals().get("after"), globals().get("booted")))
+        print("[E2E FAILED]  chip hashes: %s" % hashes)
         print("[E2E FAILED]")
         for f in failures:
             print("  -", f)

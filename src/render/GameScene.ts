@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { InputBuffer } from './inputBuffer';
+import { claimBootKeys, type KeyEvent } from './inputBuffer';
 import { dispatchKey, type InputActions, type InputModifiers, type KeyPhase } from './inputActions';
 import { nextSpeed } from './affordance';
 import {
@@ -115,10 +115,6 @@ export class GameScene extends Phaser.Scene {
   private tickAccumMs = 0;
   private speedMul = 1;
   private paused = false;
-  /** Presses captured before `create()` finished; see `inputBuffer.ts`. */
-  private bootKeys = new InputBuffer();
-  private inputReady = false;
-  private keyListener: ((event: KeyboardEvent) => void) | null = null;
   private inputActions!: InputActions;
   /** Set in create(): the ad-wrapped restart that Enter and the results card share. */
   private doRestart!: () => void;
@@ -171,12 +167,6 @@ export class GameScene extends Phaser.Scene {
    */
   init(data?: { stageId?: number }): void {
     this.stageId = data?.stageId ?? 1;
-    // Claim the keyboard HERE rather than at the end of create(). create()
-    // builds the backdrop, the HUD and the first sim frame, and any press typed
-    // during that window used to be dropped on the floor.
-    this.inputReady = false;
-    this.bootKeys.clear();
-    this.attachKeyboard();
   }
 
   create(): void {
@@ -390,63 +380,28 @@ export class GameScene extends Phaser.Scene {
       resultsAdvance: () => this.resultsAdvance(),
       resultsRestart: () => this.doRestart(),
     };
-    // Boot is over: replay anything typed while the scene was still building.
-    this.inputReady = true;
-    this.flushBootKeys();
+    // The scene can act on input now: claim the keyboard and replay whatever
+    // was typed before it could.
+    this.claimKeyboard();
   }
 
   // ---------------------------------------------------------------
   // Input
   // ---------------------------------------------------------------
 
-  private attachKeyboard(): void {
-    if (typeof window === 'undefined') return;
-    this.detachKeyboard(); // a scene restart runs init() again; never stack listeners
-    const listener = (event: KeyboardEvent) => this.onKeyDown(event);
-    this.keyListener = listener;
-    window.addEventListener('keydown', listener);
-  }
-
-  private detachKeyboard(): void {
-    if (typeof window === 'undefined' || !this.keyListener) return;
-    window.removeEventListener('keydown', this.keyListener);
-    this.keyListener = null;
+  /**
+   * Take over the app-wide keyboard and replay anything typed while the boot
+   * or menu scene had the floor.
+   */
+  private claimKeyboard(): void {
+    for (const buffered of claimBootKeys((event) => this.runKeyEvent(event))) {
+      this.runKeyEvent(buffered);
+    }
   }
 
   shutdown(): void {
-    this.detachKeyboard();
-  }
-
-  private onKeyDown(event: KeyboardEvent): void {
-    if (!this.inputReady || !this.sim || !this.inputActions) {
-      this.bootKeys.push(event, this.nowMs());
-      return;
-    }
-    this.runKey(event.key, event.code, {
-      shiftKey: event.shiftKey,
-      ctrlKey: event.ctrlKey,
-      metaKey: event.metaKey,
-    });
-  }
-
-  private runKey(key: string, code: string, mods: InputModifiers): void {
-    const phase: KeyPhase = this.sim.result === 'playing' ? 'playing' : 'results';
-    dispatchKey(key, code, phase, this.inputActions, mods);
-  }
-
-  /** Replay buffered boot presses in order, now that the match accepts input. */
-  private flushBootKeys(): void {
-    for (const buffered of this.bootKeys.drain(this.nowMs())) {
-      this.runKey(buffered.key, buffered.code, {
-        shiftKey: buffered.shiftKey,
-        ctrlKey: buffered.ctrlKey,
-        metaKey: buffered.metaKey,
-      });
-    }
-  }
-
-  private nowMs(): number {
-    return typeof performance !== 'undefined' ? performance.now() : Date.now();
+    // Release the keyboard so presses between scenes are buffered, not lost.
+    claimBootKeys(null);
   }
 
   private handleMuteKey(mods: InputModifiers): void {
@@ -459,6 +414,15 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.hud.setMusic(!audio.toggleMute());
     }
+  }
+
+  private runKeyEvent(event: KeyEvent): void {
+    const phase: KeyPhase = this.sim.result === 'playing' ? 'playing' : 'results';
+    dispatchKey(event.key, event.code, phase, this.inputActions, {
+      shiftKey: event.shiftKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+    });
   }
 
   private resultsAdvance(): void {

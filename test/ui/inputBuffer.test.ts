@@ -78,3 +78,57 @@ describe('InputBuffer', () => {
     expect(buf.dropped).toBe(0);
   });
 });
+
+/**
+ * The scene-local listener was not early enough: CI showed mid-match keys
+ * working while boot keys were still lost, because a press fired while the
+ * menu scene had the floor has no listener at all. These cover the app-wide
+ * capture that replaced it.
+ */
+describe('app-wide boot capture', () => {
+  // Minimal window stub: the module only ever calls addEventListener on it.
+  const listeners: Array<(e: unknown) => void> = [];
+  (globalThis as Record<string, unknown>).window = {
+    addEventListener: (_type: string, fn: (e: unknown) => void) => listeners.push(fn),
+  };
+
+  function fire(key: string): void {
+    for (const fn of listeners) fn({ key, code: `Key${key.toUpperCase()}` });
+  }
+
+  it('parks presses fired before any scene claims the keyboard', async () => {
+    const { installBootKeyListener, claimBootKeys, pendingBootKeyCount } =
+      await import('../../src/render/inputBuffer');
+    installBootKeyListener();
+    expect(listeners.length).toBeGreaterThan(0);
+
+    fire('x');
+    fire('1');
+    expect(pendingBootKeyCount()).toBe(2);
+
+    const seen: string[] = [];
+    const replayed = claimBootKeys((e) => seen.push(e.key));
+    expect(replayed.map((e) => e.key)).toEqual(['x', '1']);
+    expect(pendingBootKeyCount()).toBe(0);
+
+    // Once claimed, presses go straight through instead of queueing.
+    fire('c');
+    expect(seen).toEqual(['c']);
+    expect(pendingBootKeyCount()).toBe(0);
+  });
+
+  it('goes back to buffering when the scene releases the keyboard', async () => {
+    const { claimBootKeys, pendingBootKeyCount } = await import('../../src/render/inputBuffer');
+    expect(claimBootKeys(null)).toEqual([]);
+    fire('q');
+    expect(pendingBootKeyCount()).toBe(1);
+  });
+
+  it('installBootKeyListener is idempotent', async () => {
+    const { installBootKeyListener } = await import('../../src/render/inputBuffer');
+    const before = listeners.length;
+    installBootKeyListener();
+    installBootKeyListener();
+    expect(listeners.length).toBe(before);
+  });
+});
