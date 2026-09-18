@@ -28,6 +28,12 @@ import {
 import { colorHex } from './palette';
 import { PIXEL_SCALE } from './palette';
 import { crazyHasAdblock } from '../crazygames';
+const SPEED_FLASH_MS = 260;
+
+import {
+  evolveBannerText, speedLabel, subtitleColorHex,
+  type SubtitleKind, type EvolveTarget,
+} from './affordance';
 import { ToastQueue, type ToastPriority } from './toastQueue';
 
 // ---------------- per-age UI theme ----------------
@@ -205,6 +211,8 @@ export class Hud {
   private gameOverGroup?: Phaser.GameObjects.Container;
   private pauseOverlay?: Phaser.GameObjects.Container;
   private speedBtn!: Phaser.GameObjects.Text;
+  /** Remaining highlight on the speed chip after its label changes. */
+  private speedFlashMs = 0;
   private pauseBtn!: Phaser.GameObjects.Text;
   private exitBtn!: Phaser.GameObjects.Text;
   private bonusBtn!: Phaser.GameObjects.Text;
@@ -298,17 +306,20 @@ export class Hud {
       .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
     this.musicBtn.on('pointerdown', () => { this.musicOn = !this.musicOn; this.onToggleMusic?.(); this.updateMusicIcon(); });
 
-    this.speedBtn = s.add.text(w - 78, 10, '> 1x', { ...btnStyle, color: '#ffe0b0' })
+    // `SPEED 2x` states the multiplier in effect; the old `> 1x` never said
+    // whether the match WAS at 1x or was offering to leave it. Padding is
+    // trimmed and the chips to the left shift over so it still fits.
+    this.speedBtn = s.add.text(w - 78, 10, speedLabel(1), { ...btnStyle, padding: { x: 4, y: 5 }, color: '#ffe0b0' })
       .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
     this.speedBtn.on('pointerdown', () => this.onCycleSpeed?.());
     this.speedBtn.on('pointerover', () => this.speedBtn.setStyle({ color: '#f4c85b' }));
     this.speedBtn.on('pointerout', () => this.speedBtn.setStyle({ color: '#ffe0b0' }));
 
-    this.pauseBtn = s.add.text(w - 140, 10, '||', { ...btnStyle, color: '#f4c85b' })
+    this.pauseBtn = s.add.text(w - 164, 10, '||', { ...btnStyle, color: '#f4c85b' })
       .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
     this.pauseBtn.on('pointerdown', () => this.onTogglePause?.());
 
-    const fsBtn = s.add.text(w - 180, 10, 'FS', { ...btnStyle, color: '#ffe0b0' })
+    const fsBtn = s.add.text(w - 196, 10, 'FS', { ...btnStyle, color: '#ffe0b0' })
       .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
     fsBtn.on('pointerdown', () => this.onToggleFullscreen?.());
     fsBtn.on('pointerover', () => fsBtn.setStyle({ color: '#f4c85b' }));
@@ -703,7 +714,11 @@ export class Hud {
 
   setPaused(paused: boolean, speed: number): void {
     this.pauseBtn.setText(paused ? '>' : '||');
-    this.speedBtn.setText((paused ? '|| ' : '> ') + speed + 'x');
+    const label = speedLabel(speed, paused);
+    if (this.speedBtn.text !== label) {
+      this.speedBtn.setText(label);
+      this.speedFlashMs = SPEED_FLASH_MS;
+    }
     if (paused && !this.pauseOverlay) {
       const s = this.scene;
       const c = s.add.container(LANE_WIDTH / 2, LANE_HEIGHT / 2 - 20).setDepth(40);
@@ -753,6 +768,11 @@ export class Hud {
 
   update(state: SimState, canEvolveNow: boolean): void {
     this.pumpToasts();
+    if (this.speedFlashMs > 0) {
+      const dt = this.scene?.game?.loop?.delta ?? 16.7;
+      this.speedFlashMs = Math.max(0, this.speedFlashMs - dt);
+      this.speedBtn.setColor(this.speedFlashMs > 0 ? '#fff3d0' : '#ffe0b0');
+    }
     const p = state.player;
     const theme = THEMES[p.age];
     if (theme !== THEMES[this.currentTheme]) {
@@ -1015,24 +1035,41 @@ export class Hud {
       }
     }
 
+    // One status line carries both the idle hotkey help and real warnings, so
+    // it is coloured by what it is saying: ambient help is the dimmest entry
+    // and anything actionable is brighter than it.
+    const setSub = (kind: SubtitleKind, text: string): void => {
+      this.subtitle.setText(text);
+      this.subtitle.setColor(subtitleColorHex(kind));
+    };
+    const evolveTarget: EvolveTarget | null =
+      p.age === 'stone' ? 'medieval' : p.age === 'medieval' ? 'modern' : null;
+    const evolveLine = evolveTarget === null ? null : evolveBannerText({
+      nextAge: evolveTarget,
+      cost: EVOLVE_COST[evolveTarget],
+      gold: p.gold,
+      xpReady: p.xp >= EVOLVE_XP_REQ[evolveTarget],
+    });
+
     if (state.result !== 'playing') {
-      this.subtitle.setText(state.result === 'win'
-        ? 'VICTORY - timeline secured  |  SPACE to play again'
-        : state.result === 'draw'
-          ? 'DRAW - the timeline tore itself apart  |  SPACE to play again'
-          : 'DEFEAT - timeline lost  |  SPACE to retry');
+      setSub(state.result === 'win' ? 'win' : state.result === 'draw' ? 'draw' : 'lose',
+        state.result === 'win'
+          ? 'VICTORY - timeline secured  |  SPACE to play again'
+          : state.result === 'draw'
+            ? 'DRAW - the timeline tore itself apart  |  SPACE to play again'
+            : 'DEFEAT - timeline lost  |  SPACE to retry');
     } else if (p.spawnLockTicks > 0) {
-      this.subtitle.setText('Deploying...');
-    } else if (p.age === 'stone' && p.xp >= EVOLVE_XP_REQ.medieval) {
-      this.subtitle.setText('XP READY  |  press E to enter the Medieval Age');
-    } else if (p.age === 'medieval' && p.xp >= EVOLVE_XP_REQ.modern) {
-      this.subtitle.setText('XP READY  |  press E to enter the Modern Age');
+      setSub('deploying', 'Deploying...');
+    } else if (evolveLine !== null) {
+      // Both gates named. Advertising only XP used to invite a press that
+      // could not pay, and the refusal was silent.
+      setSub('evolve', evolveLine);
     } else {
       const enemies = state.units.filter((u) => u.side === 'ai' && u.state !== 'die').length;
-      if ((p.rallyTicks ?? 0) > 0) this.subtitle.setText(`WAR CRY ACTIVE (+25% SPEED) | ${Math.ceil((p.rallyTicks ?? 0) * 0.05)}s`);
-      else if (enemies > 8) this.subtitle.setText('ALERT  |  enemy massing - W War Cry / Q Time Warp');
-      else if (enemies === 0) this.subtitle.setText('PUSH  |  lane clear - send the swarm');
-      else this.subtitle.setText('Deploy 1/2/3 | C Call-up | W War Cry | Q Warp | SPC Ult | U/Y upgrade | E evolve');
+      if ((p.rallyTicks ?? 0) > 0) setSub('warcry', `WAR CRY ACTIVE (+25% SPEED) | ${Math.ceil((p.rallyTicks ?? 0) * 0.05)}s`);
+      else if (enemies > 8) setSub('alert', 'ALERT  |  enemy massing - W War Cry / Q Time Warp');
+      else if (enemies === 0) setSub('push', 'PUSH  |  lane clear - send the swarm');
+      else setSub('help', 'Deploy 1/2/3 | C Call-up | W War Cry | Q Warp | SPC Ult | U/Y upgrade | E evolve | X speed');
     }
   }
 

@@ -189,6 +189,27 @@ export function canEvolve(state: SimState, side: Side): boolean {
   return true;
 }
 
+/**
+ * Why evolution is refused right now, so the HUD can say it out loud instead of
+ * playing a bare error bleep. Evolution has TWO gates — XP and gold — and the
+ * banner used to advertise only one of them. `null` means it would go through,
+ * which is exactly `canEvolve`'s answer; `test/sim/evolve.test.ts` pins that
+ * the two can never disagree.
+ */
+export function evolveBlockReason(state: SimState, side: Side): string | null {
+  if (state.result !== 'playing') return 'Match over';
+  const p = side === 'player' ? state.player : state.ai;
+  const idx = AGE_ORDER.indexOf(p.age);
+  if (idx === -1 || idx >= AGE_ORDER.length - 1) return 'Already at the Modern Age';
+  const nextAge = AGE_ORDER[idx + 1]!;
+  const xpReq = EVOLVE_XP_REQ[nextAge];
+  if (p.xp < xpReq) return `Need ${Math.ceil(xpReq - p.xp)} more XP`;
+  const cost = EVOLVE_COST[nextAge];
+  if (p.gold < cost) return `Need ${Math.ceil(cost - p.gold)} more gold (${cost} G)`;
+  if (p.evolveLockTicks > 0) return `Cooling down ${Math.ceil(p.evolveLockTicks / 20)}s`;
+  return null;
+}
+
 export function canUpgrade(state: SimState, side: Side, which: 'forge' | 'armor'): boolean {
   if (state.result !== 'playing') return false;
   const p = side === 'player' ? state.player : state.ai;

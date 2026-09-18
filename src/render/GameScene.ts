@@ -1,4 +1,7 @@
 import Phaser from 'phaser';
+import { InputBuffer } from './inputBuffer';
+import { dispatchKey, type InputActions, type InputModifiers, type KeyPhase } from './inputActions';
+import { nextSpeed } from './affordance';
 import {
   type Intent,
   type SimState,
@@ -23,6 +26,7 @@ import {
   canChronoSurge,
   canWarCry,
   canEvolve,
+  evolveBlockReason,
   canSpawn,
   canUpgrade,
   createInitialState,
@@ -111,6 +115,13 @@ export class GameScene extends Phaser.Scene {
   private tickAccumMs = 0;
   private speedMul = 1;
   private paused = false;
+  /** Presses captured before `create()` finished; see `inputBuffer.ts`. */
+  private bootKeys = new InputBuffer();
+  private inputReady = false;
+  private keyListener: ((event: KeyboardEvent) => void) | null = null;
+  private inputActions!: InputActions;
+  /** Set in create(): the ad-wrapped restart that Enter and the results card share. */
+  private doRestart!: () => void;
   private playerBase!: Phaser.GameObjects.Image;
   private aiBase!: Phaser.GameObjects.Image;
   private playerFlag!: Phaser.GameObjects.Image;
@@ -160,6 +171,12 @@ export class GameScene extends Phaser.Scene {
    */
   init(data?: { stageId?: number }): void {
     this.stageId = data?.stageId ?? 1;
+    // Claim the keyboard HERE rather than at the end of create(). create()
+    // builds the backdrop, the HUD and the first sim frame, and any press typed
+    // during that window used to be dropped on the floor.
+    this.inputReady = false;
+    this.bootKeys.clear();
+    this.attachKeyboard();
   }
 
   create(): void {
@@ -356,45 +373,98 @@ export class GameScene extends Phaser.Scene {
       this.hud.announce('ENDLESS SKIRMISH', 'hold the lane as long as you can', 2200);
     }
 
-    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
-      const handleMuteKey = () => {
-        if (e.shiftKey) {
-          const vMuted = voice.toggleVoice();
-          this.hud.announce('VOICE', vMuted ? 'MUTED' : 'ENABLED', 1000);
-        } else if (e.ctrlKey || e.metaKey) {
-          const mMuted = audio.toggleMusic();
-          this.hud.announce('MUSIC', mMuted ? 'MUTED' : 'ENABLED', 1000);
-        } else {
-          this.hud.setMusic(!audio.toggleMute());
-        }
-      };
-      if (e.key === 'p' || e.key === 'P' || e.code === 'Escape') { this.togglePause(); return; }
-      if (e.key === 'f' || e.key === 'F') { this.toggleFullscreen(); return; }
-      if (this.sim.result !== 'playing') {
-        if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-          const cleared = this.sim.result === 'win' || this.sim.result === 'draw';
-          if (cleared && this.stageId > 0 && this.stageId < STAGES.length) this.gotoStage(this.stageId + 1);
-          else safeRestart();
-        } else if (e.code === 'Space' || e.key === 'r' || e.key === 'R') safeRestart();
-        else if (e.key === 'm' || e.key === 'M') handleMuteKey();
-        return;
-      }
-      if (e.key === '1') this.trySpawn('player', 'swarm');
-      else if (e.key === '2') this.trySpawn('player', 'tank');
-      else if (e.key === '3') this.trySpawn('player', 'ranged');
-      else if (e.key === 'e' || e.key === 'E') this.tryEvolve('player');
-      else if (e.key === 'u' || e.key === 'U') this.tryUpgrade('forge');
-      else if (e.key === 'y' || e.key === 'Y') this.tryUpgrade('armor');
-      else if (e.key === 't' || e.key === 'T') this.tryTurret();
-      else if (e.key === 'q' || e.key === 'Q') this.tryChronoSurge();
-      else if (e.key === 'w' || e.key === 'W') this.tryWarCry();
-      // C, not R: R is already the results-card restart.
-      else if (e.key === 'c' || e.key === 'C') this.tryReinforce();
-      else if (e.key === 'm' || e.key === 'M') handleMuteKey();
-      // Space is the superweapon: it is the one action worth a fat hotkey.
-      else if (e.key === ' ') this.tryUltimate();
-      else if (e.key === 'x' || e.key === 'X') this.cycleSpeed();
+    this.doRestart = safeRestart;
+    this.inputActions = {
+      togglePause: () => this.togglePause(),
+      toggleFullscreen: () => this.toggleFullscreen(),
+      spawn: (kind) => this.trySpawn('player', kind),
+      evolve: () => this.tryEvolve('player'),
+      upgrade: (which) => this.tryUpgrade(which),
+      turret: () => this.tryTurret(),
+      chronoSurge: () => this.tryChronoSurge(),
+      warCry: () => this.tryWarCry(),
+      reinforce: () => this.tryReinforce(),
+      ultimate: () => this.tryUltimate(),
+      cycleSpeed: () => this.cycleSpeed(),
+      muteKey: (mods) => this.handleMuteKey(mods),
+      resultsAdvance: () => this.resultsAdvance(),
+      resultsRestart: () => this.doRestart(),
+    };
+    // Boot is over: replay anything typed while the scene was still building.
+    this.inputReady = true;
+    this.flushBootKeys();
+  }
+
+  // ---------------------------------------------------------------
+  // Input
+  // ---------------------------------------------------------------
+
+  private attachKeyboard(): void {
+    if (typeof window === 'undefined') return;
+    this.detachKeyboard(); // a scene restart runs init() again; never stack listeners
+    const listener = (event: KeyboardEvent) => this.onKeyDown(event);
+    this.keyListener = listener;
+    window.addEventListener('keydown', listener);
+  }
+
+  private detachKeyboard(): void {
+    if (typeof window === 'undefined' || !this.keyListener) return;
+    window.removeEventListener('keydown', this.keyListener);
+    this.keyListener = null;
+  }
+
+  shutdown(): void {
+    this.detachKeyboard();
+  }
+
+  private onKeyDown(event: KeyboardEvent): void {
+    if (!this.inputReady || !this.sim || !this.inputActions) {
+      this.bootKeys.push(event, this.nowMs());
+      return;
+    }
+    this.runKey(event.key, event.code, {
+      shiftKey: event.shiftKey,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
     });
+  }
+
+  private runKey(key: string, code: string, mods: InputModifiers): void {
+    const phase: KeyPhase = this.sim.result === 'playing' ? 'playing' : 'results';
+    dispatchKey(key, code, phase, this.inputActions, mods);
+  }
+
+  /** Replay buffered boot presses in order, now that the match accepts input. */
+  private flushBootKeys(): void {
+    for (const buffered of this.bootKeys.drain(this.nowMs())) {
+      this.runKey(buffered.key, buffered.code, {
+        shiftKey: buffered.shiftKey,
+        ctrlKey: buffered.ctrlKey,
+        metaKey: buffered.metaKey,
+      });
+    }
+  }
+
+  private nowMs(): number {
+    return typeof performance !== 'undefined' ? performance.now() : Date.now();
+  }
+
+  private handleMuteKey(mods: InputModifiers): void {
+    if (mods.shiftKey) {
+      const vMuted = voice.toggleVoice();
+      this.hud.announce('VOICE', vMuted ? 'MUTED' : 'ENABLED', 1000);
+    } else if (mods.ctrlKey || mods.metaKey) {
+      const mMuted = audio.toggleMusic();
+      this.hud.announce('MUSIC', mMuted ? 'MUTED' : 'ENABLED', 1000);
+    } else {
+      this.hud.setMusic(!audio.toggleMute());
+    }
+  }
+
+  private resultsAdvance(): void {
+    const cleared = this.sim.result === 'win' || this.sim.result === 'draw';
+    if (cleared && this.stageId > 0 && this.stageId < STAGES.length) this.gotoStage(this.stageId + 1);
+    else this.doRestart();
   }
 
   private applyAmbient(age: 'stone' | 'medieval' | 'modern'): void {
@@ -673,12 +743,15 @@ export class GameScene extends Phaser.Scene {
 
   private tryEvolve(side: 'player' | 'ai'): void {
     if (side !== 'player') return;
-    if (canEvolve(this.sim, 'player')) {
+    const blocked = evolveBlockReason(this.sim, 'player');
+    if (blocked === null) {
       this.pendingIntents.push({ type: 'evolve', side: 'player' });
       audio.sfxEvolve();
-    } else {
-      audio.sfxError();
+      return;
     }
+    // Never a silent refusal: E has two gates and the banner used to name one.
+    audio.sfxError();
+    this.hud.announce('CANNOT EVOLVE', blocked, 1600);
   }
 
   private tryUpgrade(which: 'forge' | 'armor'): void {
@@ -698,7 +771,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cycleSpeed(): void {
-    this.speedMul = this.speedMul === 1 ? 2 : this.speedMul === 2 ? 3 : 1;
+    this.speedMul = nextSpeed(this.speedMul);
+    // Push the new multiplier to the chip immediately, so a press replayed
+    // during boot is visibly acknowledged before the next update() tick.
+    this.hud.setPaused(this.paused, this.speedMul);
     audio.sfxClick();
   }
 
@@ -1165,6 +1241,14 @@ export class GameScene extends Phaser.Scene {
     } else {
       g.sprite.y = -2; g.sprite.x = 0; g.sprite.angle = 0; g.sprite.setScale(g.baseScale);
     }
+
+    // Ground the unit. The shadow is a separate child pinned to the foot line,
+    // so while the sprite hopped the shadow stayed exactly where it was — which
+    // is what made a moving unit read as a sticker lifting off its own shadow.
+    // Shrinking and fading it with height plants the unit in the lane.
+    const airborne = Math.min(1, Math.max(0, -g.sprite.y / 9));
+    g.shadow.setScale(1 - airborne * 0.3, 1);
+    g.shadow.setAlpha(1 - airborne * 0.45);
 
     const unitPalette = paletteFor(u.def.age);
     const isSurgeActive = (this.sim.chronoSurgeTicks ?? 0) > 0;
