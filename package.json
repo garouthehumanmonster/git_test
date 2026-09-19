@@ -1,8 +1,22 @@
 {
   "name": "timeline-war",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Timeline War — a tiny 1-lane RTS where you evolve from club-wielding cavemen to modern snipers.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/garouthehumanmonster/git_test.git"
+  },
+  "homepage": "https://github.com/garouthehumanmonster/git_test#readme",
+  "keywords": [
+    "rts",
+    "phaser",
+    "webgl",
+    "pixel-art",
+    "deterministic",
+    "simulation"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",

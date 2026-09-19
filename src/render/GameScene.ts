@@ -36,11 +36,11 @@ import {
   tick,
 } from '../sim/sim';
 import { type MatchOutcome, type ResultsPayload, baseHpRatio, recordResult, stageById, starRating, STAGES, saveProgress, loadProgress } from '../campaign';
-import { FX_ORIGIN, TURRET_FIT, TURRET_SILL, turretKey } from './turretart';
+import { TURRET_FIT, TURRET_SILL, turretKey } from './turretart';
 import { Hud } from './Hud';
 import { UNIT_FIT, unitKey } from './unitart';
 import { BASE_FIT, baseKey } from './basearth';
-import { PIXEL_SCALE, colorHex, paletteFor } from './palette';
+import { PIXEL_SCALE, paletteFor } from './palette';
 import { Stage, laneGroundY } from './stage';
 import { audio } from '../audio/audio';
 import { voice } from '../audio/voice';
@@ -52,6 +52,14 @@ import {
   crazyShowMidgameAd,
   crazyShowRewardedAd,
 } from '../crazygames';
+import {
+  FloatingTextManager,
+  fireTurretTracer,
+  renderStrikeVisuals,
+  spawnAttackFx,
+  spawnCoinPickup,
+  STRIKE_SHAKE,
+} from './combatFx';
 
 // ---- Presentation constants ---------------------------------------------
 /** How high above the foot line projectiles fly, so arrows leave the bow. */
@@ -71,8 +79,6 @@ const DEPTH = {
   float: 8,
 } as const;
 
-/** Screen shake per superweapon, so a meteor lands heavier than a flak burst. */
-const STRIKE_SHAKE: Record<StrikeKind, number> = { meteor: 22, volley: 12, airstrike: 16 };
 /** Victory is savoured: 0.3x for 1.5s before the results card appears. */
 const VICTORY_SLOWMO_MUL = 0.3;
 const VICTORY_SLOWMO_MS = 1500;
@@ -128,7 +134,7 @@ export class GameScene extends Phaser.Scene {
   private aiBaseFlash = 0;
   private unitGfx = new Map<number, UnitGfx>();
   private projGfx = new Map<number, ProjGfx>();
-  private floatingText: Phaser.GameObjects.Text[] = [];
+  private floatMgr!: FloatingTextManager;
   private dust!: Phaser.GameObjects.Particles.ParticleEmitter;
   private burst!: Phaser.GameObjects.Particles.ParticleEmitter;
   private ambient!: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -192,7 +198,7 @@ export class GameScene extends Phaser.Scene {
     this.parallaxY = 0;
     this.unitGfx = new Map();
     this.projGfx = new Map();
-    this.floatingText = [];
+    this.floatMgr = new FloatingTextManager(this);
     this.lastAge = this.sim.player.age;
 
     crazyGameplayStart();
@@ -681,8 +687,7 @@ export class GameScene extends Phaser.Scene {
     this.unitGfx.clear();
     for (const p of this.projGfx.values()) { p.sprite.destroy(); p.trail.destroy(); }
     this.projGfx.clear();
-    for (const f of this.floatingText) f.destroy();
-    this.floatingText = [];
+    this.floatMgr.clear();
     this.hud.resetGameOver();
     if (this.audioStarted) audio.setMusicState('playing');
     audio.setTension(0);
@@ -1454,104 +1459,20 @@ export class GameScene extends Phaser.Scene {
     this.sim.events = this.sim.events.filter((event) => event.kind === 'gameover');
   }
 
-  /**
-   * Code-driven weapon effect. Melee units swing an arc from the weapon tip,
-   * tanks crack the ground at their feet and ranged units flash at the muzzle;
-   * each is timed off the same attack cooldown the sim uses, so the animation
-   * always matches the damage.
-   */
   private spawnAttackFx(u: UnitState, kind: 'slash' | 'muzzle' | 'shock'): void {
-    const key = `fx_${kind}_${u.def.age}`;
-    if (!this.textures.exists(key)) return;
-    const origin = FX_ORIGIN[key] ?? { x: 0.5, y: 0.5 };
-    const lift = u.def.role === 'tank' ? 6 : u.def.role === 'ranged' ? 30 : 26;
-    const forward = u.def.role === 'tank' ? 10 : 12;
-    const x = u.x + u.dir * forward;
-    const y = this.unitGroundY(u) - lift;
-    const fx = this.add.image(x, y, key)
-      .setOrigin(origin.x, origin.y)
-      .setScale(PIXEL_SCALE)
-      .setDepth(DEPTH.unit + 0.5);
-    if (u.dir === -1) fx.setFlipX(true);
-    if (kind === 'slash') {
-      fx.setAngle(u.dir * -50);
-      this.tweens.add({ targets: fx, angle: u.dir * 55, alpha: 0, duration: 170, onComplete: () => fx.destroy() });
-    } else if (kind === 'shock') {
-      fx.setScale(PIXEL_SCALE * 0.6);
-      this.tweens.add({ targets: fx, scaleX: PIXEL_SCALE * 1.5, scaleY: PIXEL_SCALE * 1.5, alpha: 0, duration: 200, onComplete: () => fx.destroy() });
-    } else {
-      this.tweens.add({ targets: fx, alpha: 0, scaleX: PIXEL_SCALE * 1.3, duration: 110, onComplete: () => fx.destroy() });
-    }
+    spawnAttackFx(this, u, kind, this.unitGroundY(u));
   }
 
-  /**
-   * Tracer + muzzle flash for a base turret shot, so "the turret is firing"
-   * is legible even when the target is off the edge of the lane.
-   */
   private fireTurretFx(side: 'player' | 'ai', fromX: number, toX: number, toY: number, age: 'stone' | 'medieval' | 'modern'): void {
-    const pal = paletteFor(age);
-    const fromY = LANE_TOP + 42;
-    const g = this.add.graphics().setDepth(DEPTH.projectile);
-    g.lineStyle(2, side === 'player' ? pal.accent : pal.highlight, 0.85);
-    g.lineBetween(fromX, fromY, toX, toY);
-    this.tweens.add({ targets: g, alpha: 0, duration: 130, onComplete: () => g.destroy() });
-
-    const muzzleKey = `fx_muzzle_${age}`;
-    if (this.textures.exists(muzzleKey)) {
-      const fit = TURRET_FIT[age];
-      const flash = this.add.image(fromX, fromY, muzzleKey).setOrigin(0, 0.5).setScale(PIXEL_SCALE * 1.2).setDepth(DEPTH.particles);
-      if (side === 'ai') flash.setFlipX(true);
-      void fit;
-      this.tweens.add({ targets: flash, alpha: 0, scaleX: PIXEL_SCALE * 0.6, duration: 140, onComplete: () => flash.destroy() });
-    }
+    fireTurretTracer(this, side, fromX, toX, toY, age);
     this.turretKick[side] = 5;
     this.shake(70, 2);
     audio.sfxTurret(age);
   }
 
-  /** Superweapon impact: a flying projectile into a blast, plus shake and flash. */
   private impactStrikeFx(kind: StrikeKind, x: number, y: number, radius: number, side: 'player' | 'ai'): void {
     const age = side === 'player' ? this.sim.player.age : this.sim.ai.age;
-    const pal = paletteFor(age);
-    const key = kind === 'meteor' ? 'fx_meteor' : kind === 'airstrike' ? 'fx_bomb' : 'fx_muzzle';
-
-    // Falling projectile: meteors arrive from above, the bomber's stick comes
-    // in flat from the enemy side.
-    if (this.textures.exists(`${key}_${age}`)) {
-      const img = this.add.image(x, kind === 'volley' ? y - 180 : LANE_TOP - 30, `${key}_${age}`)
-        .setOrigin(0.5)
-        .setScale(PIXEL_SCALE * 1.4)
-        .setDepth(DEPTH.strike);
-      if (kind === 'volley') img.setAngle(20);
-      this.strikeLayer.add(img);
-      this.tweens.add({
-        targets: img,
-        y,
-        angle: kind === 'volley' ? -10 : 0,
-        duration: 180,
-        ease: 'Quad.easeIn',
-        onComplete: () => img.destroy(),
-      });
-    }
-
-    // Blast: expanding ring + scorch puff + a bright flash for meteors.
-    const ring = this.add.circle(x, y + 6, radius * 0.35, pal.highlight, 0.55).setDepth(DEPTH.particles);
-    this.tweens.add({
-      targets: ring,
-      scaleX: 3.1,
-      scaleY: 1.4,
-      alpha: 0,
-      duration: 320,
-      onComplete: () => ring.destroy(),
-    });
-    const scorch = this.add.ellipse(x, y + 14, radius * 1.1, 16, pal.dark, 0.45).setOrigin(0.5).setDepth(DEPTH.particles);
-    this.tweens.add({ targets: scorch, alpha: 0, duration: 900, onComplete: () => scorch.destroy() });
-
-    this.dust.setParticleTint(pal.highlight);
-    this.dust.emitParticleAt(x, y + 6, kind === 'meteor' ? 22 : 14);
-    this.dust.setParticleTint(pal.accent);
-    this.dust.emitParticleAt(x, y + 12, 12);
-
+    renderStrikeVisuals(this, this.strikeLayer, this.dust, kind, x, y, radius, age);
     this.shake(360, STRIKE_SHAKE[kind] * 1.6);
     this.cameras.main.flash(120, 255, kind === 'volley' ? 160 : 230, 130, false);
     this.hitStopMs = Math.max(this.hitStopMs, 55);
@@ -1559,45 +1480,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnCoinPickup(startX: number, startY: number): void {
-    const coin = this.add.circle(startX, startY, 4.5, 0xffd700).setDepth(DEPTH.float);
-    const core = this.add.circle(startX, startY, 2.5, 0xfffacd).setDepth(DEPTH.float + 1);
-    this.tweens.add({
-      targets: [coin, core],
-      x: PLAYER_BASE_X + 35,
-      y: LANE_TOP + 20,
-      scaleX: 0.35,
-      scaleY: 0.35,
-      alpha: 0.2,
-      duration: 520,
-      ease: 'Cubic.easeIn',
-      onComplete: () => {
-        coin.destroy();
-        core.destroy();
-      },
-    });
+    spawnCoinPickup(this, startX, startY);
   }
 
   private addFloat(x: number, y: number, text: string, color: number, ttl: number, pop = false): void {
-    const t = this.add.text(x, y, text, {
-      fontFamily: 'monospace', fontSize: pop ? '17px' : '14px', color: colorHex(color), fontStyle: 'bold',
-      stroke: '#050d12', strokeThickness: pop ? 4 : 3,
-    }).setOrigin(0.5).setDepth(DEPTH.float);
-    if (pop) {
-      t.setScale(1.25);
-      this.tweens.add({ targets: t, scaleX: 1, scaleY: 1, duration: 140, ease: 'Back.easeOut' });
-    }
-    this.floatingText.push(t);
-    this.tweens.add({
-      targets: t,
-      y: y - (pop ? 34 : 24),
-      x: x + (Math.random() - 0.5) * 14,
-      alpha: 0,
-      duration: ttl * TICK_MS,
-      onComplete: () => {
-        t.destroy();
-        this.floatingText = this.floatingText.filter((f) => f.active);
-      },
-    });
+    this.floatMgr.addFloat(x, y, text, color, ttl, pop);
   }
 
   // ---------------------------------------------------------------- decor
