@@ -80,9 +80,10 @@ export function emptyProgress(): StageProgress {
 // Storage
 // ---------------------------------------------------------------------------
 
-interface KeyValueStore {
+export interface KeyValueStore {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem(key: string): void;
 }
 
 /** In-memory fallback so the module works headless (tests, SSR, private mode). */
@@ -91,6 +92,7 @@ function memoryStore(): KeyValueStore {
   return {
     getItem: (k) => (map.has(k) ? map.get(k)! : null),
     setItem: (k, v) => { map.set(k, v); },
+    removeItem: (k) => { map.delete(k); },
   };
 }
 

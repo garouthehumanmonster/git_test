@@ -18,8 +18,11 @@ import {
   PLAYER_BASE_X,
   TICK_MS,
   ULT_DEFS,
+  UNIT_DEFS,
   collapseRate,
 } from '../sim/types';
+import { track, getElapsedBucket, getDurationBucket } from '../analytics';
+import { isSupplyDropEligible } from '../ads';
 import {
   canBuildTurret,
   canCastUltimate,
@@ -164,6 +167,19 @@ export class GameScene extends Phaser.Scene {
   /** Recoil offset in px, decaying, applied on top of the turret's rest pose. */
   private turretKick = { player: 0, ai: 0 };
   private strikeLayer!: Phaser.GameObjects.Container;
+  private firstActionLogged = false;
+  private supplyDropGranted = false;
+  private supplyDropVisible = false;
+
+  private logFirstAction(action: 'spawn' | 'upgrade' | 'turret' | 'ultimate' | 'chrono' | 'rally' | 'reinforce'): void {
+    if (this.firstActionLogged) return;
+    this.firstActionLogged = true;
+    track({
+      name: 'first_action',
+      action,
+      elapsedBucket: getElapsedBucket(this.sim.tick * 0.05),
+    });
+  }
 
   constructor() { super('GameScene'); }
 
@@ -185,7 +201,16 @@ export class GameScene extends Phaser.Scene {
     this.gameOverHandled = false;
     this.pendingIntents = [];
     this.rewardInFlight = false;
+    this.firstActionLogged = false;
+    this.supplyDropGranted = false;
+    this.supplyDropVisible = false;
     this.paused = false;
+
+    const progress = loadProgress();
+    const priorStars = (this.stageId > 0 && progress.stars[this.stageId])
+      ? (progress.stars[this.stageId] as 0 | 1 | 2 | 3)
+      : 0;
+    track({ name: 'stage_start', stageId: this.stageId, priorStars });
     this.speedMul = 1;
     this.playerBaseFlash = 0;
     this.aiBaseFlash = 0;
@@ -273,6 +298,7 @@ export class GameScene extends Phaser.Scene {
 
     // HUD
     this.hud = new Hud(this);
+    this.hud.initStage(this.stageId);
     this.hud.onSpawnRequest = (role) => this.trySpawn('player', role);
     this.hud.onSpawnHover = (role) => {
       if (this.ghostTimer) {
@@ -319,19 +345,43 @@ export class GameScene extends Phaser.Scene {
     this.hud.onChronoSurgeRequest = () => this.tryChronoSurge();
     this.hud.onReinforceRequest = () => this.tryReinforce();
     this.hud.onRewardedAdRequest = () => {
-      if (this.rewardInFlight || this.sim.result !== 'playing') return;
+      if (this.rewardInFlight || this.sim.result !== 'playing' || this.supplyDropGranted) return;
       this.rewardInFlight = true;
+      this.hud.setBonusButtonInFlight(true);
+      track({
+        name: 'rewarded_offer',
+        placement: 'gold',
+        result: 'accepted',
+      });
       crazyShowRewardedAd(
         () => {
           this.rewardInFlight = false;
+          this.hud.setBonusButtonInFlight(false);
+          if (!this.scene.isActive()) return;
+          this.supplyDropGranted = true;
+          this.supplyDropVisible = false;
+          this.hud.setBonusButtonVisible(false);
+          track({
+            name: 'rewarded_offer',
+            placement: 'gold',
+            result: 'completed',
+          });
           this.sim.player.gold += 100;
           voice.play('reinforcements');
           audio.sfxGold();
-          this.addFloat(PLAYER_BASE_X + 60, LANE_TOP + 30, '+100G REWARD', paletteFor(this.sim.player.age).highlight, 60);
+          this.addFloat(PLAYER_BASE_X + 60, LANE_TOP + 30, '+100G SUPPLY DROP', paletteFor(this.sim.player.age).highlight, 60);
         },
         () => {
           this.rewardInFlight = false;
+          this.hud.setBonusButtonInFlight(false);
+          if (!this.scene.isActive()) return;
+          track({
+            name: 'rewarded_offer',
+            placement: 'gold',
+            result: 'error',
+          });
           audio.sfxError();
+          this.supplyDropVisible = false;
           this.hud.setBonusButtonVisible(false);
         },
       );
@@ -560,6 +610,7 @@ export class GameScene extends Phaser.Scene {
   /** Buy the turret or upgrade it, straight from the HUD. */
   private tryTurret(): void {
     if (this.sim.result !== 'playing') return;
+    this.logFirstAction('turret');
     if (canBuildTurret(this.sim, 'player')) {
       this.pendingIntents.push({ type: 'turret', side: 'player' });
       const rank = this.sim.player.turret.rank + 1;
@@ -573,6 +624,7 @@ export class GameScene extends Phaser.Scene {
   /** Fire the age's superweapon at the enemy cluster. */
   private tryUltimate(): void {
     if (this.sim.result !== 'playing') return;
+    this.logFirstAction('ultimate');
     if (!canCastUltimate(this.sim, 'player')) {
       audio.sfxError();
       return;
@@ -583,6 +635,7 @@ export class GameScene extends Phaser.Scene {
   /** Trigger tactical Chrono Surge (Timeline Warp: enemy stasis + army haste). */
   private tryChronoSurge(): void {
     if (this.sim.result !== 'playing') return;
+    this.logFirstAction('chrono');
     if (!canChronoSurge(this.sim, 'player')) {
       audio.sfxError();
       return;
@@ -593,6 +646,7 @@ export class GameScene extends Phaser.Scene {
   /** Trigger tactical War Cry (Commander rally: +25% speed & attack rate). */
   private tryWarCry(): void {
     if (this.sim.result !== 'playing') return;
+    this.logFirstAction('rally');
     if (!canWarCry(this.sim, 'player')) {
       const p = this.sim.player;
       if (p.gold < 25) this.hud.announce('WAR CRY LOCKED', 'Requires 25 Gold!', 900);
@@ -609,6 +663,7 @@ export class GameScene extends Phaser.Scene {
    */
   private tryReinforce(): void {
     if (this.sim.result !== 'playing') return;
+    this.logFirstAction('reinforce');
     const reason = reinforceBlockReason(this.sim, 'player');
     if (reason) {
       audio.sfxError();
@@ -699,6 +754,7 @@ export class GameScene extends Phaser.Scene {
 
   private trySpawn(side: 'player' | 'ai', role: UnitRole): void {
     if (side !== 'player') return;
+    this.logFirstAction('spawn');
     if (this.ghostTimer) { clearTimeout(this.ghostTimer); this.ghostTimer = null; }
     if (this.ghostPreview) { this.ghostPreview.destroy(); this.ghostPreview = null; }
     if (canSpawn(this.sim, 'player', role)) {
@@ -714,16 +770,29 @@ export class GameScene extends Phaser.Scene {
     if (side !== 'player') return;
     const blocked = evolveBlockReason(this.sim, 'player');
     if (blocked === null) {
+      track({
+        name: 'evolve_attempt',
+        age: this.sim.player.age,
+        outcome: 'success',
+        reasonCode: 'none',
+      });
       this.pendingIntents.push({ type: 'evolve', side: 'player' });
       audio.sfxEvolve();
       return;
     }
+    track({
+      name: 'evolve_attempt',
+      age: this.sim.player.age,
+      outcome: 'blocked',
+      reasonCode: blocked.includes('XP') ? 'xp' : blocked.includes('gold') ? 'gold' : blocked.includes('Modern') ? 'max_age' : 'none',
+    });
     // Never a silent refusal: E has two gates and the banner used to name one.
     audio.sfxError();
     this.hud.announce('CANNOT EVOLVE', blocked, 1600);
   }
 
   private tryUpgrade(which: 'forge' | 'armor'): void {
+    this.logFirstAction('upgrade');
     if (canUpgrade(this.sim, 'player', which)) {
       this.pendingIntents.push({ type: 'upgrade', side: 'player', which });
       audio.sfxEvolve();
@@ -801,6 +870,39 @@ export class GameScene extends Phaser.Scene {
     this.syncTurret('ai');
     this.updateDecor();
     this.updateMatchClock();
+
+    if (this.sim.result === 'playing') {
+      const pAge = this.sim.player.age;
+      const minUnitCost = Math.min(
+        UNIT_DEFS[pAge].swarm.cost,
+        UNIT_DEFS[pAge].ranged.cost,
+        UNIT_DEFS[pAge].tank.cost,
+      );
+      const playerUnitCount = this.sim.units.filter((u) => u.side === 'player' && u.state !== 'die').length;
+      const elapsedSec = this.sim.tick * 0.05;
+      const eligible = isSupplyDropEligible({
+        gold: this.sim.player.gold,
+        minUnitCost,
+        livingPlayerUnits: playerUnitCount,
+        elapsedSeconds: elapsedSec,
+        hasAdblock: crazyHasAdblock(),
+        tutorialActive: this.stageId === 1 && elapsedSec < 60,
+        alreadyOfferedOrUsed: this.supplyDropGranted,
+        matchResult: this.sim.result,
+      });
+      if (eligible !== this.supplyDropVisible) {
+        this.supplyDropVisible = eligible;
+        this.hud.setBonusButtonVisible(eligible);
+        if (eligible) {
+          track({
+            name: 'rewarded_offer',
+            placement: 'gold',
+            result: 'shown',
+          });
+        }
+      }
+    }
+
     this.hud.update(this.sim, canEvolve(this.sim, 'player'));
 
     if (this.sim.result !== 'playing' && !this.gameOverHandled) {
@@ -888,13 +990,42 @@ export class GameScene extends Phaser.Scene {
       : recordResult(summary);
     // A draw was not a defeat, so there is nothing to revive from.
     const canRevive = this.sim.result === 'loss' && !this.revivedThisMatch && !crazyHasAdblock();
+    if (canRevive) {
+      track({
+        name: 'rewarded_offer',
+        placement: 'revive',
+        result: 'shown',
+      });
+    }
+    const outcome: 'win' | 'loss' | 'draw' | 'timeout' =
+      summary.result === 'win' || summary.result === 'draw' ? summary.result : 'loss';
+    const elapsedSeconds = (this.sim.tick * TICK_MS) / 1000;
+    track({
+      name: 'match_end',
+      stageId: this.stageId,
+      outcome,
+      durationBucket: getDurationBucket(elapsedSeconds),
+      ageReached: this.sim.player.age,
+      stars: (payload.stars >= 0 && payload.stars <= 3 ? payload.stars : 0) as 0 | 1 | 2 | 3,
+    });
     this.hud.showResults(payload, canRevive);
   }
 
   private secondWind(): void {
     if (this.revivedThisMatch) return;
+    track({
+      name: 'rewarded_offer',
+      placement: 'revive',
+      result: 'accepted',
+    });
     crazyShowRewardedAd(
       () => {
+        if (!this.scene.isActive()) return;
+        track({
+          name: 'rewarded_offer',
+          placement: 'revive',
+          result: 'completed',
+        });
         this.revivedThisMatch = true;
         this.sim.result = 'playing';
         // The previous verdict no longer applies; the match decides again.
@@ -910,6 +1041,12 @@ export class GameScene extends Phaser.Scene {
         this.addFloat(PLAYER_BASE_X + 60, LANE_TOP + 30, 'SECOND WIND! +35% HP', paletteFor(this.sim.player.age).highlight, 60);
       },
       () => {
+        if (!this.scene.isActive()) return;
+        track({
+          name: 'rewarded_offer',
+          placement: 'revive',
+          result: 'error',
+        });
         audio.sfxError();
       },
     );

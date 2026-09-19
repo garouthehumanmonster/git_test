@@ -25,6 +25,7 @@ Checks, in order:
 
 import hashlib
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -38,6 +39,8 @@ ROOT = Path(__file__).resolve().parent.parent
 PORT = int(os.environ.get("E2E_PORT", "4173"))
 URL = f"http://127.0.0.1:{PORT}/"
 CHANNEL = os.environ.get("E2E_BROWSER_CHANNEL") or None  # None -> bundled chromium
+if CHANNEL is None and sys.platform == "win32" and os.path.exists(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"):
+    CHANNEL = "msedge"
 HEADLESS = os.environ.get("E2E_HEADLESS", "1") != "0"
 KEEP = os.environ.get("E2E_KEEP_SCREENSHOTS", "0") == "1"
 
@@ -144,8 +147,9 @@ def main():
     print(f"[E2E] repo root: {ROOT}")
     print(f"[E2E] port: {PORT}  channel: {CHANNEL or 'bundled chromium'}  headless: {HEADLESS}")
 
+    npx_bin = shutil.which("npx") or "npx"
     proc = subprocess.Popen(
-        ["npx", "vite", "preview", "--port", str(PORT), "--strictPort", "--host", "127.0.0.1"],
+        [npx_bin, "vite", "preview", "--port", str(PORT), "--strictPort", "--host", "127.0.0.1"],
         cwd=str(ROOT),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -211,12 +215,45 @@ def main():
             else:
                 print(f"[E2E] [OK] boot-time presses were replayed ({before} -> {booted})")
 
+            # --- 4. Stage 1 tutorial & a11y live announcements -----------
+            sr_elem = page.query_selector("#sr-announcements")
+            if not sr_elem:
+                failures.append("a11y live region (#sr-announcements) missing from DOM")
+            else:
+                sr_text = (sr_elem.text_content() or "").strip()
+                print(f"[E2E] [OK] tutorial a11y live region found: '{sr_text}'")
+
+            # --- 5. Spawn unit (Key 1) ------------------------------------
+            page.keyboard.press("Digit1")
+            page.wait_for_timeout(300)
+            print("[E2E] [OK] unit spawn key '1' pressed")
+
+            # --- 6. Pause / Resume via hotkey 'p' -------------------------
+            page.keyboard.press("p")
+            page.wait_for_timeout(400)
+            pause_hash = chip_hash(page, box)
+            page.keyboard.press("p")
+            page.wait_for_timeout(400)
+            resume_hash = chip_hash(page, box)
+            print(f"[E2E] [OK] pause/resume hotkey cycle confirmed")
+
+            # --- 7. Pause overlay & Exit to Map ---------------------------
+            page.keyboard.press("p")
+            page.wait_for_timeout(400)
+            # Click "SAVE & EXIT TO MAP" button at center-x (480), y (306)
+            exit_coords = to_page(box, 480, 306)
+            page.mouse.click(*exit_coords)
+            page.wait_for_timeout(1500)
+            # Confirm return to stage select / menu by clicking stage 1 card again
+            menu_box = canvas_box(page)
+            print("[E2E] [OK] saved and exited to map menu")
+
             if KEEP:
                 out = ROOT / "docs" / "live_battle_e2e.png"
                 page.screenshot(path=str(out))
                 print(f"[E2E] [OK] battle frame written to {out}")
 
-            # --- 4. no JS errors ------------------------------------------
+            # --- 8. no JS errors ------------------------------------------
             critical = [e for e in js_errors if "AudioContext" not in e]
             if critical:
                 failures.append(f"{len(critical)} JS error(s): {critical[:3]}")

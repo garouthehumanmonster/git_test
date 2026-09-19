@@ -26,6 +26,7 @@
     "test:watch": "vitest",
     "test:e2e": "python scripts/e2e-browser-check.py",
     "sim": "tsx scripts/sim-match.ts",
+    "sim:baseline": "tsx scripts/sim-baseline.ts",
     "typecheck": "tsc --noEmit",
     "art:build": "tsx scripts/build-backdrops.ts",
     "art:preview": "tsx scripts/render-preview.ts"

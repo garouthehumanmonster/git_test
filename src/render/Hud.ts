@@ -27,7 +27,6 @@ import {
 } from '../sim/types';
 import { colorHex } from './palette';
 import { PIXEL_SCALE } from './palette';
-import { crazyHasAdblock } from '../crazygames';
 const SPEED_FLASH_MS = 260;
 
 import {
@@ -35,6 +34,14 @@ import {
   type SubtitleKind, type EvolveTarget,
 } from './affordance';
 import { ToastQueue, type ToastPriority } from './toastQueue';
+import {
+  evaluateTutorialStep,
+  loadTutorialState,
+  saveTutorialState,
+  announceLiveRegion,
+  type TutorialState,
+  type TutorialEvaluation,
+} from '../tutorial';
 
 // ---------------- per-age UI theme ----------------
 interface Theme {
@@ -218,6 +225,9 @@ export class Hud {
   private bonusBtn!: Phaser.GameObjects.Text;
   private musicOn = true;
   private currentTheme: 'stone' | 'medieval' | 'modern' = 'stone';
+  private stageId = 1;
+  private tutorialState: TutorialState | null = null;
+  private tutorialEvaluation: TutorialEvaluation | null = null;
 
   static readonly BAR_W = 180;
   static readonly BAR_H = 14;
@@ -295,12 +305,11 @@ export class Hud {
 
     // Controls (top right)
     const btnStyle = { fontFamily: 'monospace', fontSize: '12px', backgroundColor: '#171009', padding: { x: 8, y: 5 } };
-    this.bonusBtn = s.add.text(w - 14, 34, 'BONUS +100G', { ...btnStyle, color: '#f4c85b', fontStyle: 'bold' })
-      .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
+    this.bonusBtn = s.add.text(w - 14, 34, 'SUPPLY DROP (AD) +100G', { ...btnStyle, color: '#f4c85b', fontStyle: 'bold' })
+      .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true }).setVisible(false);
     this.bonusBtn.on('pointerdown', () => this.onRewardedAdRequest?.());
     this.bonusBtn.on('pointerover', () => this.bonusBtn.setStyle({ color: '#ffe0b0' }));
     this.bonusBtn.on('pointerout', () => this.bonusBtn.setStyle({ color: '#f4c85b' }));
-    if (crazyHasAdblock()) this.bonusBtn.setVisible(false);
 
     this.musicBtn = s.add.text(w - 14, 10, 'SND', { ...btnStyle, color: '#d9a25e' })
       .setOrigin(1, 0).setDepth(10).setInteractive({ useHandCursor: true });
@@ -362,7 +371,15 @@ export class Hud {
       fontFamily: 'monospace', fontSize: '12px', color: '#ffe0b0',
       stroke: '#171009', strokeThickness: 4,
       backgroundColor: '#171009cc', padding: { x: 12, y: 3 },
-    }).setOrigin(0.5).setDepth(15);
+    }).setOrigin(0.5).setDepth(15).setInteractive({ useHandCursor: true });
+
+    this.subtitle.on('pointerdown', () => {
+      if (this.tutorialState && !this.tutorialState.dismissed && this.stageId === 1) {
+        this.tutorialState.dismissed = true;
+        saveTutorialState(this.tutorialState);
+        announceLiveRegion('');
+      }
+    });
 
     this.makeCollapseBanner();
     this.applyTheme(THEMES.stone);
@@ -784,6 +801,26 @@ export class Hud {
     this.xpText.setText(`${Math.floor(p.xp)} XP`);
     this.ageText.setText(AGE_LABEL[p.age].toUpperCase());
 
+    let tutorialText: string | null = null;
+    if (this.tutorialState && !this.tutorialState.dismissed && this.stageId === 1) {
+      const evalResult = evaluateTutorialStep(this.tutorialState, {
+        stageId: 1,
+        playerUnitsSpawned: state.stats.unitsSpawned.player,
+        canEvolve: canEvolveNow,
+        playerAge: p.age,
+        ultimateReady: p.ultCharge >= ULT_MAX,
+        ultimateUsed: (state.stats.ultimatesUsed?.player ?? 0) > 0,
+      });
+      this.tutorialEvaluation = evalResult;
+      tutorialText = evalResult.promptText;
+      if (tutorialText) {
+        announceLiveRegion(tutorialText);
+      }
+      if (evalResult.nextStep === 'completed' && this.tutorialState.step !== 'completed') {
+        saveTutorialState(this.tutorialState);
+      }
+    }
+
     const barW = Hud.BAR_W;
     const pRatio = Math.max(0, p.baseHp) / BASE_HP;
     this.playerHpBar.width = barW * pRatio;
@@ -846,6 +883,10 @@ export class Hud {
       btn.cost.setColor(affordable ? colorHex(theme.gold) : colorHex(theme.edge));
       btn.stats.setColor(affordable ? theme.accentText : colorHex(theme.mid));
       btn.accent.setFillStyle(roleAccent[btn.role], affordable ? 1 : 0.35);
+      if (this.tutorialEvaluation?.highlight === 'spawn' && btn.role === 'swarm' && affordable) {
+        const pulseAlpha = 0.7 + Math.sin(this.scene.time.now / 150) * 0.3;
+        btn.bg.setAlpha(pulseAlpha);
+      }
       this.drawBtnFrame(
         btn.frame,
         btn.bg.x - btn.bg.width / 2, btn.bg.y - btn.bg.height / 2,
@@ -878,7 +919,7 @@ export class Hud {
       this.evolveBtn.label.setColor(canEvolveNow ? theme.accentText : colorHex(theme.mid));
       this.evolveBtn.cost.setColor(canEvolveNow ? theme.evolveGlow : colorHex(theme.mid));
       this.evolveBtn.bg.setInteractive({ useHandCursor: canEvolveNow });
-      if (canEvolveNow) {
+      if (canEvolveNow || this.tutorialEvaluation?.highlight === 'evolve') {
         this.evolveBtn.pulse += 0.08;
         const alpha = 0.85 + Math.sin(this.evolveBtn.pulse) * 0.15;
         this.evolveBtn.bg.setAlpha(alpha);
@@ -997,7 +1038,7 @@ export class Hud {
       btn.meter.width = Math.max(0.001, (btn.meterBg.width) * ratio);
       btn.meter.setFillStyle(full ? theme.gold : theme.accent);
       btn.bg.setInteractive({ useHandCursor: full });
-      if (full) {
+      if (full || this.tutorialEvaluation?.highlight === 'ultimate') {
         btn.pulse += 0.12;
         const glow = 0.8 + Math.sin(btn.pulse) * 0.2;
         btn.bg.setAlpha(glow);
@@ -1058,6 +1099,8 @@ export class Hud {
           : state.result === 'draw'
             ? 'DRAW - the timeline tore itself apart  |  SPACE to play again'
             : 'DEFEAT - timeline lost  |  SPACE to retry');
+    } else if (tutorialText) {
+      setSub('help', `${tutorialText}  [Tap to dismiss]`);
     } else if (p.spawnLockTicks > 0) {
       setSub('deploying', 'Deploying...');
     } else if (evolveLine !== null) {
@@ -1242,8 +1285,32 @@ export class Hud {
     return c;
   }
 
+  initStage(stageId: number): void {
+    this.stageId = stageId;
+    this.tutorialState = stageId === 1 ? loadTutorialState() : null;
+    this.tutorialEvaluation = null;
+    this.setBonusButtonVisible(false);
+  }
+
   setBonusButtonVisible(visible: boolean): void {
-    if (this.bonusBtn) this.bonusBtn.setVisible(visible);
+    if (this.bonusBtn) {
+      this.bonusBtn.setVisible(visible);
+      if (visible) {
+        this.bonusBtn.setInteractive({ useHandCursor: true });
+      }
+    }
+  }
+
+  setBonusButtonInFlight(inFlight: boolean): void {
+    if (this.bonusBtn) {
+      if (inFlight) {
+        this.bonusBtn.setStyle({ color: '#888888' });
+        this.bonusBtn.disableInteractive();
+      } else {
+        this.bonusBtn.setStyle({ color: '#f4c85b' });
+        this.bonusBtn.setInteractive({ useHandCursor: true });
+      }
+    }
   }
 
   resetGameOver(): void {

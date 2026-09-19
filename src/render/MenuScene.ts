@@ -11,6 +11,7 @@ import {
 } from '../campaign';
 import { colorHex, paletteFor } from './palette';
 import { crazyGetUser } from '../crazygames';
+import { track } from '../analytics';
 
 /**
  * Campaign stage select.
@@ -26,6 +27,7 @@ export class MenuScene extends Phaser.Scene {
   constructor() { super('MenuScene'); }
 
   create(): void {
+    track({ name: 'menu_view' });
     this.progress = loadProgress();
     const pal = paletteFor('stone');
     this.cameras.main.setBackgroundColor(pal.dark);
