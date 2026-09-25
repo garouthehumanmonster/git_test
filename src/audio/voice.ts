@@ -7,38 +7,21 @@
  * `audio.playVoice` (300Hz HPF / 3.4kHz LPF / 12-bit crush / age-synced reverb),
  * and the bus obeys the master mute, so `M` silences music, effects and voice
  * together.
+ *
+ * The script itself lives in `voiceLines.ts` so a test can check it against the
+ * files on disk. Lines with no recorded clip are routed straight to speech
+ * synthesis by `voiceLineSource()` instead of discovering a 404 at play time.
  */
 import { audio } from './audio';
+import {
+  NARRATED_VOICE_LINES,
+  VOICE_TEXT,
+  voiceClipFile,
+  voiceLineSource,
+  type VoiceLine,
+} from './voiceLines';
 
-export type VoiceLine =
-  | 'battle_begins'
-  | 'stone_age'
-  | 'medieval_age'
-  | 'modern_age'
-  | 'victory'
-  | 'defeat'
-  | 'reinforcements'
-  | 'base_low'
-  | 'turret_online'
-  | 'collapse'
-  | 'war_cry'
-  | 'chrono_surge';
-
-/** Spoken text, also the script used to regenerate the pack. */
-const VOICE_TEXT: Record<VoiceLine, string> = {
-  battle_begins: 'Battle begins!',
-  stone_age: 'Stone age!',
-  medieval_age: 'Medieval age!',
-  modern_age: 'Modern age!',
-  victory: 'Victory! Enemy base destroyed!',
-  defeat: 'Defeat! Your base has fallen!',
-  reinforcements: 'Reinforcements incoming!',
-  base_low: 'Warning! Base under attack!',
-  turret_online: 'Turret online!',
-  collapse: 'Timeline collapse! Both bases are decaying. Finish it!',
-  war_cry: 'War cry! All units charge!',
-  chrono_surge: 'Chrono surge! Time accelerates!',
-};
+export type { VoiceLine };
 
 class VoiceAnnouncer {
   private lastSpoken: Map<VoiceLine, number> = new Map();
@@ -46,9 +29,11 @@ class VoiceAnnouncer {
 
   constructor() {
     if (typeof window === 'undefined') return;
-    for (const line of Object.keys(VOICE_TEXT) as VoiceLine[]) {
+    // Only lines that are actually recorded get an element. Building one for an
+    // unshipped line would cache a request that can only fail.
+    for (const line of NARRATED_VOICE_LINES) {
       try {
-        const a = new Audio(`${import.meta.env.BASE_URL}voice/${line}.mp3`);
+        const a = new Audio(`${import.meta.env.BASE_URL}voice/${voiceClipFile(line)}`);
         a.preload = 'auto';
         a.volume = 1;
         this.audioCache.set(line, a);
@@ -73,11 +58,11 @@ class VoiceAnnouncer {
     if (now - last < minIntervalMs) return;
     this.lastSpoken.set(line, now);
 
-    const sound = this.audioCache.get(line);
+    const sound = voiceLineSource(line) === 'clip' ? this.audioCache.get(line) : undefined;
     if (sound) {
       sound.currentTime = 0;
-      // Only the "asset could not be decoded or fetched at all" case reaches the
-      // fallback; the narration pack above is the intended voice.
+      // A clip that fails to decode or fetch still gets spoken rather than
+      // dropped; the narration pack above is the intended voice.
       audio.playVoice(sound).catch(() => this.speakSynthesis(VOICE_TEXT[line]));
     } else {
       this.speakSynthesis(VOICE_TEXT[line]);

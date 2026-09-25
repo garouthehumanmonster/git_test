@@ -61,7 +61,7 @@ seed · no backend · playable on the CrazyGames portal.
 - **Pure deterministic simulation** — `src/sim/` has zero Phaser and zero DOM
   imports, runs on a 32-bit Mulberry32 PRNG, and replays byte-for-byte from
   `state.rngState`. Netplay and replay ready.
-- **235 tests, 20 files** — sim rules, golden replays, campaign maths, HUD copy,
+- **240 tests, 21 files** — sim rules, golden replays, campaign maths, HUD copy,
   input buffering, art palette contract, SDK QA, plus a real-browser E2E job that
   drives the production build with real key events.
 - **Built for a portal** — CrazyGames SDK v3 lifecycle and ad hooks with a
@@ -95,7 +95,7 @@ npm ci                # install
 npm run dev           # dev server on http://localhost:5173
 npm run preview       # serve the production build on http://localhost:4173
 
-npm test              # Vitest suite — 235 tests / 20 files
+npm test              # Vitest suite — 240 tests / 21 files
 npm run test:watch    # watch mode
 npm run typecheck     # tsc --noEmit
 npm run build         # tsc && vite build -> dist/
@@ -263,7 +263,8 @@ src/
 ├─ audio/
 │  ├─ audio.ts                 # Web Audio chiptune sequencer + one-shot SFX + voice chain
 │  ├─ patterns.ts              # Adaptive soundtrack as pure data (one key per age)
-│  └─ voice.ts                 # Announcer: MP3 pack with speechSynthesis fallback
+│  ├─ voiceLines.ts            # Announcer script + which lines are actually recorded
+│  └─ voice.ts                 # Announcer playback through the radio chain
 ├─ sim/                        # Pure headless simulation (zero Phaser imports)
 │  ├─ types.ts                 # State types, unit defs, all balance constants, match rules
 │  ├─ rng.ts                   # Mulberry32 PRNG + rehydratable RNG wrapper
@@ -387,9 +388,13 @@ rather than reusing the bow shot.
 
 The announcer is an AI narration pack in `public/voice/` (10 MP3s, one
 consistent speaker) played through a 300Hz/3.4kHz radio band, a 12-bit crusher
-and age-synced reverb. `src/audio/voice.ts` defines 12 lines; the two without a
-shipped clip fall back to `speechSynthesis`. `M` mutes music, effects and voice
-together.
+and age-synced reverb. The announcer script lives in `src/audio/voiceLines.ts`
+as pure data: 12 lines, of which 10 are recorded. The two unrecorded lines
+(`war_cry`, `chrono_surge`) are routed to `speechSynthesis` explicitly by
+`voiceLineSource()` rather than discovering a 404 at play time, and
+`test/audio/voice.test.ts` reads `public/voice/` and fails if the registry and
+the clips on disk disagree in either direction. `M` mutes music, effects and
+voice together.
 
 ## Portal integration & monetisation
 
@@ -427,14 +432,14 @@ completion, evolution comprehension, ad engagement, session depth, star funnel).
 ## Testing
 
 ```
-20 files · 235 tests · ~5s
+21 files · 240 tests · ~5s
 ```
 
 | Area | Files |
 | :--- | :--- |
 | Simulation | `sim.test.ts`, `determinism.test.ts`, `economy.test.ts`, `evolve.test.ts`, `engagement.test.ts`, `collapse.test.ts`, `campaign.test.ts`, `rng.test.ts` |
 | UI & render | `art.test.ts`, `affordance.test.ts`, `inputActions.test.ts`, `inputBuffer.test.ts`, `readability.test.ts`, `toastQueue.test.ts`, `unitAnim.test.ts` |
-| Audio | `music.test.ts` |
+| Audio | `music.test.ts`, `voice.test.ts` |
 | Portal & product | `crazygames.test.ts`, `ads.test.ts`, `analytics.test.ts`, `tutorial.test.ts` |
 
 The golden-replay tests (`test/sim/determinism.test.ts`) replay fixed intent
@@ -504,8 +509,10 @@ against `main` with the two CI jobs green, and never commit `node_modules/`,
 
 ## Known gaps
 
-- `src/audio/voice.ts` declares 12 announcer lines but `public/voice/` ships 10
-  MP3s — `war_cry` and `chrono_surge` currently fall back to `speechSynthesis`.
+- The announcer pack is two clips short: `war_cry` and `chrono_surge` have no
+  MP3 and are spoken by browser `speechSynthesis`, which is a different voice
+  from the narrator. The fallback is explicit and test-guarded now, but
+  recording them (and adding them to `NARRATED_VOICE_LINES`) is the real fix.
 - `public/favicon.png` and `public/icons.svg` are not referenced by any code —
   `index.html` favicons `./icon.jpg` — so they are dead weight that can be
   deleted or wired up.
