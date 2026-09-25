@@ -5,10 +5,12 @@ import {
   STAGES,
   type StageDef,
   isUnlocked,
+  launchStageId,
   loadProgress,
   totalStars,
   MAX_STARS,
 } from '../campaign';
+import { COUNTER_LEGEND } from './affordance';
 import { colorHex, paletteFor } from './palette';
 import { crazyGetUser } from '../crazygames';
 import { track } from '../analytics';
@@ -57,6 +59,13 @@ export class MenuScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: '13px', color: '#d9a25e',
       stroke: '#171009', strokeThickness: 4,
     }).setOrigin(0.5);
+    // Sits in the gap under the subtitle and above the cards (cards start at
+    // y 131). The triangle is the game; the select screen has to say so
+    // before the first click.
+    this.add.text(LANE_WIDTH / 2, 96, COUNTER_LEGEND, {
+      fontFamily: 'monospace', fontSize: '12px', color: '#ffe0b0',
+      stroke: '#171009', strokeThickness: 4,
+    }).setOrigin(0.5);
 
     const starText = this.add.text(LANE_WIDTH / 2, LANE_HEIGHT - 22, `STARS  ${totalStars(this.progress)} / ${MAX_STARS}`, {
       fontFamily: 'monospace', fontSize: '14px', color: '#f4c85b', fontStyle: 'bold',
@@ -93,14 +102,20 @@ export class MenuScene extends Phaser.Scene {
       this.cards.push(this.makeStageCard(stage, x, y, cardW, cardH));
     });
 
-    // Endless skirmish — the same rules the balance harness runs.
-    const skirmishY = LANE_HEIGHT - 74;
-    const btn = this.add.rectangle(LANE_WIDTH / 2, skirmishY, 300, 40, 0x2b1e12, 1)
+    // Endless skirmish — unranked, the same rules the balance harness runs.
+    // Taller than the old 40px chip so the "no stars" line is tappable on a
+    // phone and cannot be mistaken for a sixth campaign stage.
+    const skirmishY = LANE_HEIGHT - 78;
+    const btn = this.add.rectangle(LANE_WIDTH / 2, skirmishY, 360, 50, 0x2b1e12, 1)
       .setStrokeStyle(2, 0x8a5a2c)
       .setInteractive({ useHandCursor: true });
-    this.add.text(LANE_WIDTH / 2, skirmishY, 'ENDLESS SKIRMISH', {
+    this.add.text(LANE_WIDTH / 2, skirmishY - 9, 'ENDLESS SKIRMISH', {
       fontFamily: 'monospace', fontSize: '15px', color: '#ffe0b0', fontStyle: 'bold',
       stroke: '#171009', strokeThickness: 4,
+    }).setOrigin(0.5);
+    this.add.text(LANE_WIDTH / 2, skirmishY + 11, 'UNRANKED  ·  NO STARS', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#d9a25e',
+      stroke: '#171009', strokeThickness: 3,
     }).setOrigin(0.5);
     btn.on('pointerover', () => btn.setFillStyle(0x4d3720));
     btn.on('pointerout', () => btn.setFillStyle(0x2b1e12));
@@ -192,9 +207,12 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private startStage(stageId: number): void {
+    // launchStageId(0) stays 0. Do not "fix" a skirmish by starting the
+    // highest unlocked campaign stage — that writes stars for an unranked run.
+    const launch = launchStageId(stageId);
     this.cameras.main.fadeOut(180, 11, 9, 24);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.start('GameScene', { stageId: stageId === 0 ? Math.min(5, this.progress.unlocked) : stageId });
+      this.scene.start('GameScene', { stageId: launch });
     });
   }
 }

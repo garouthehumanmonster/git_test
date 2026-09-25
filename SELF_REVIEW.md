@@ -2,7 +2,15 @@
 
 Scores over time: **8.7 / 10** (initial) → **7.5 / 10** (external audit) →
 **8.8 / 10** (bug-fix pass) → **9.3 / 10** (presentation rebuild) →
-**9.4 / 10** (combat, agency and campaign pass) → **10.0 / 10** (arcade polish & browser E2E pass).
+**9.4 / 10** (combat, agency and campaign pass) → **10.0 / 10** (arcade polish & browser E2E pass)
+→ **7.4 / 10** (fresh play rating, `RATING.md`) → **7.9 / 10** after the injected
+first-match pass (`IMPROVE_PROMPT.md`).
+
+The 10.0 was the engineering checklist marking itself. A first session still
+had a skirmish button that started a campaign stage, a coach that said
+"Clubman", a status line that listed hotkeys instead of the counter triangle,
+and crit labels stacked on one pixel. Those four are fixed. The leftover list
+in `RATING.md` is why this is not an 8.5.
 
 ## Combat, Agency And Campaign — 2026-09-14
 

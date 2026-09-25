@@ -13,6 +13,7 @@ import {
   recordResult,
   saveProgress,
   setProgressStore,
+  launchStageId,
   stageById,
   starRating,
   totalStars,
@@ -81,6 +82,24 @@ describe('star rating', () => {
 
   it('awards nothing for a loss', () => {
     expect(starRating('loss', 1)).toBe(0);
+  });
+});
+
+describe('launch stage id', () => {
+  it('keeps endless skirmish at 0 no matter how far the campaign is', () => {
+    expect(launchStageId(0)).toBe(0);
+  });
+
+  it('passes a real campaign card through unchanged', () => {
+    expect(launchStageId(1)).toBe(1);
+    expect(launchStageId(5)).toBe(5);
+  });
+
+  it('refuses to invent a stage for a bad id', () => {
+    expect(launchStageId(-1)).toBe(1);
+    expect(launchStageId(6)).toBe(1);
+    expect(launchStageId(1.5)).toBe(1);
+    expect(launchStageId(Number.NaN)).toBe(1);
   });
 });
 

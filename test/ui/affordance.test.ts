@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  evolveBannerText, evolveBlockedOnGold, nextSpeed, speedLabel,
+  counterAdvice, evolveBannerText, evolveBlockedOnGold, laneClearLine, nextSpeed, resultsHint, speedLabel,
   subtitleColorHex, SUBTITLE_COLORS, type SubtitleKind,
 } from '../../src/render/affordance';
 
@@ -99,8 +99,88 @@ describe('status line colour', () => {
       return 0.2126 * r + 0.7152 * g + 0.0722 * b;
     };
     const help = lum(SUBTITLE_COLORS.help);
-    for (const kind of ['alert', 'push', 'evolve', 'warcry'] as const) {
+    for (const kind of ['alert', 'push', 'evolve', 'warcry', 'counter'] as const) {
       expect(lum(SUBTITLE_COLORS[kind]), kind).toBeGreaterThan(help);
     }
+  });
+});
+
+describe('counter triangle copy', () => {
+  const answer = (role: 'swarm' | 'tank' | 'ranged') =>
+    ({ swarm: 'Clubber', tank: 'Mammoth', ranged: 'Slinger' })[role];
+  const threat = answer;
+
+  it('names the button that beats the dominant enemy, not a hotkey dump', () => {
+    const advice = counterAdvice({
+      counts: { swarm: 1, tank: 0, ranged: 4 },
+      answerLabel: answer,
+      threatLabel: threat,
+    })!;
+    expect(advice.role).toBe('swarm');
+    expect(advice.hotkey).toBe('1');
+    expect(advice.line).toBe('Slingers incoming — Clubber (1) shreds them');
+    expect(advice.line).not.toMatch(/War Cry|Time Warp|upgrade/);
+  });
+
+  it('breaks a tie toward ranged, the threat a tied field should not hide', () => {
+    const advice = counterAdvice({
+      counts: { swarm: 2, tank: 2, ranged: 2 },
+      answerLabel: answer,
+      threatLabel: threat,
+    })!;
+    expect(advice.threat).toBe('ranged');
+    expect(advice.role).toBe('swarm');
+  });
+
+  it('says nothing when the lane is empty', () => {
+    expect(counterAdvice({
+      counts: { swarm: 0, tank: 0, ranged: 0 },
+      answerLabel: answer,
+      threatLabel: threat,
+    })).toBeNull();
+  });
+
+  it('uses the enemy age label when it differs from the player button', () => {
+    const advice = counterAdvice({
+      counts: { swarm: 0, tank: 3, ranged: 0 },
+      answerLabel: () => 'Slinger',
+      threatLabel: () => 'Knight',
+    })!;
+    expect(advice.role).toBe('ranged');
+    expect(advice.line).toContain('Knights');
+    expect(advice.line).toContain('Slinger (3)');
+  });
+
+  it('pluralises Men-at-Arms instead of appending an s', () => {
+    const advice = counterAdvice({
+      counts: { swarm: 2, tank: 0, ranged: 0 },
+      answerLabel: () => 'Knight',
+      threatLabel: () => 'Man-at-Arms',
+    })!;
+    expect(advice.line.startsWith('Men-at-Arms incoming')).toBe(true);
+  });
+
+  it('teaches all three buttons while the lane is empty', () => {
+    const line = laneClearLine(answer);
+    expect(line).toContain('Clubber (1)');
+    expect(line).toContain('Mammoth (2)');
+    expect(line).toContain('Slinger (3)');
+    expect(line).not.toContain('send the swarm');
+  });
+});
+
+describe('results card hint', () => {
+  it('does not promise a next level when the run has nowhere to go', () => {
+    expect(resultsHint({ cleared: true, hasNextStage: false, canRevive: false }))
+      .toBe('Press ENTER to play again');
+    expect(resultsHint({ cleared: true, hasNextStage: true, canRevive: false }))
+      .toBe('Press ENTER for the next level');
+  });
+
+  it('offers revive only on a loss that can still be bought back', () => {
+    expect(resultsHint({ cleared: false, hasNextStage: false, canRevive: true }))
+      .toContain('RETRY');
+    expect(resultsHint({ cleared: false, hasNextStage: true, canRevive: false }))
+      .toBe('Press ENTER to retry');
   });
 });

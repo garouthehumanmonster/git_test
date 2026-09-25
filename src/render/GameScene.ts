@@ -42,6 +42,7 @@ import { type MatchOutcome, type ResultsPayload, baseHpRatio, recordResult, stag
 import { TURRET_FIT, TURRET_SILL, turretKey } from './turretart';
 import { Hud } from './Hud';
 import { UNIT_FIT, unitKey } from './unitart';
+import { animFrameKey, attackFrameKey, attackProgress, combatFrameIndex, deathFrameKey, inStrikeWindow, isIllustratedPose, modelScreenHeight, STRIKE_START, walkFrameIndex } from './unitAnim';
 import { BASE_FIT, baseKey } from './basearth';
 import { PIXEL_SCALE, paletteFor } from './palette';
 import { Stage, laneGroundY } from './stage';
@@ -63,6 +64,7 @@ import {
   spawnCoinPickup,
   STRIKE_SHAKE,
 } from './combatFx';
+import { coalesceHits, type HitFlash } from './readability';
 
 // ---- Presentation constants ---------------------------------------------
 /** How high above the foot line projectiles fly, so arrows leave the bow. */
@@ -108,6 +110,8 @@ interface UnitGfx {
   hovered: boolean;
   wasFull: boolean;
   baseScale: number;
+  /** True when this sprite is a generated walk-cycle drawing, not the pixel fallback. */
+  illustrated: boolean;
 }
 
 interface ProjGfx {
@@ -1104,34 +1108,66 @@ export class GameScene extends Phaser.Scene {
       if (!seen.has(id)) {
         if (!g.dying) {
           g.dying = true;
-          // Death: a red burst, a dramatic knock-back tumble, ground bounce, and 380ms dissolve.
           g.hpBar.setVisible(false);
           g.hpBarBg.setVisible(false);
           g.chev1.setVisible(false);
           g.chev2.setVisible(false);
+          g.forgePip.setVisible(false);
+          g.armorPip.setVisible(false);
           this.burst.emitParticleAt(g.container.x, g.container.y - 8, 16);
-          const dir = g.dir || 1;
-          this.tweens.add({
-            targets: g.container,
-            x: g.container.x - dir * 16,
-            y: g.container.y - 12,
-            angle: -dir * 75,
-            duration: 160,
-            ease: 'Cubic.easeOut',
-            onComplete: () => {
-              this.dust.emitParticleAt(g.container.x, g.container.y + 4, 6);
-              this.tweens.add({
-                targets: g.container,
-                alpha: 0,
-                y: g.container.y + 14,
-                scaleX: 0.8,
-                scaleY: 0.35,
-                duration: 220,
-                ease: 'Quad.easeIn',
-                onComplete: () => g.container.destroy(),
-              });
-            },
-          });
+          this.tweens.killTweensOf(g.container);
+          this.tweens.killTweensOf(g.sprite);
+          if (g.illustrated) {
+            // A painted figure is not a sticker. Spinning the container and
+            // squashing it smears the face. Drop the fallen plate, if it
+            // loaded, and let the body settle on the foot line.
+            const dieKey = deathFrameKey(g.sprite.texture.key);
+            if (this.textures.exists(dieKey)) {
+              g.sprite.setTexture(dieKey);
+              g.sprite.setOrigin(0.5, 1);
+              g.sprite.setScale(g.baseScale);
+              this.textures.get(dieKey).setFilter(Phaser.Textures.FilterMode.LINEAR);
+            }
+            g.sprite.angle = 0;
+            g.container.angle = 0;
+            this.tweens.add({
+              targets: g.sprite,
+              y: 1,
+              duration: 180,
+              ease: 'Quad.easeOut',
+            });
+            this.tweens.add({
+              targets: g.container,
+              alpha: 0,
+              duration: 420,
+              delay: 200,
+              ease: 'Quad.easeIn',
+              onComplete: () => g.container.destroy(),
+            });
+          } else {
+            const dir = g.dir || 1;
+            this.tweens.add({
+              targets: g.container,
+              x: g.container.x - dir * 16,
+              y: g.container.y - 12,
+              angle: -dir * 75,
+              duration: 160,
+              ease: 'Cubic.easeOut',
+              onComplete: () => {
+                this.dust.emitParticleAt(g.container.x, g.container.y + 4, 6);
+                this.tweens.add({
+                  targets: g.container,
+                  alpha: 0,
+                  y: g.container.y + 14,
+                  scaleX: 0.8,
+                  scaleY: 0.35,
+                  duration: 220,
+                  ease: 'Quad.easeIn',
+                  onComplete: () => g.container.destroy(),
+                });
+              },
+            });
+          }
         }
         this.unitGfx.delete(id);
       }
@@ -1155,13 +1191,20 @@ export class GameScene extends Phaser.Scene {
     const groundY = this.unitGroundY(u);
     const container = this.add.container(u.x, groundY).setDepth(DEPTH.unit);
     const key = unitKey(u.def.age, role, u.side);
+    const idleAnim = animFrameKey(key, 0);
+    const illustrated = this.textures.exists(idleAnim);
+    const textureKey = illustrated ? idleAnim : key;
     const fit = UNIT_FIT[u.def.age][role];
-    const targetH = fit.h * PIXEL_SCALE;
-    const sprite = this.add.image(0, 0, key)
+    const sprite = this.add.image(0, 0, textureKey)
       .setFlipX(u.dir === -1)
       .setOrigin(0.5, 1);
-    const unitScale = sprite.height > 0 ? targetH / sprite.height : PIXEL_SCALE;
+    const srcH = sprite.height || 1;
+    const targetH = illustrated
+      ? modelScreenHeight(role, sprite.width || srcH, srcH)
+      : fit.h * PIXEL_SCALE;
+    const unitScale = targetH / srcH;
     sprite.setScale(unitScale);
+    if (illustrated) this.textures.get(textureKey).setFilter(Phaser.Textures.FilterMode.LINEAR);
     // Authoring scale is fixed, so a texel is always exactly 2 canvas pixels.
     const unitPalette = paletteFor(u.def.age);
 
@@ -1197,7 +1240,7 @@ export class GameScene extends Phaser.Scene {
     const g: UnitGfx = {
       id: u.id, container, sprite, shadow, hpBar, hpBarBg, chev1, chev2, forgePip, armorPip,
       flashUntilMs: 0, currentVet: 0, dying: false, knock: 0, lastAttackTick: u.cooldown,
-      hovered: false, wasFull: true, baseScale: unitScale,
+      hovered: false, wasFull: true, baseScale: unitScale, illustrated,
     };
     container.on('pointerover', () => { g.hovered = true; });
     container.on('pointerout', () => { g.hovered = false; });
@@ -1208,14 +1251,88 @@ export class GameScene extends Phaser.Scene {
     return g;
   }
 
+  /**
+   * Walk-cycle drawings face right. The enemy side is the same set, mirrored,
+   * with team cloth already shifted to red in the atlas.
+   */
+  private poseTextureKey(u: UnitState): string {
+    const base = unitKey(u.def.age, u.def.role, u.side);
+    if (!this.textures.exists(animFrameKey(base, 0))) return base;
+    let frame = 0;
+    if (u.state === 'fight') {
+      const progress = attackProgress(u.cooldown, u.def.attackRate);
+      // The strike plate is the hit. Walk drawings cover the wind-up and recovery.
+      if (inStrikeWindow(progress)) {
+        const strike = attackFrameKey(base);
+        if (this.textures.exists(strike)) return strike;
+      }
+      frame = combatFrameIndex(progress);
+    } else if (u.state === 'walk' && !u.reserve) {
+      frame = walkFrameIndex(u.ageTicks, u.animSeed);
+    } else if (this.sim.result !== 'playing') {
+      frame = walkFrameIndex(Math.floor(this.time.now / 50), u.animSeed);
+    }
+    const key = animFrameKey(base, frame);
+    return this.textures.exists(key) ? key : base;
+  }
+
+  /**
+   * The drawing already has a stride. Squash-and-stretch on top of it turns
+   * a face into a smear, so illustrated units only hop, lunge and breathe.
+   */
+  private poseIllustrated(g: UnitGfx, u: UnitState): void {
+    g.sprite.setScale(g.baseScale);
+    g.sprite.angle = 0;
+    g.sprite.x = 0;
+    g.sprite.y = -2;
+    if (this.sim.result !== 'playing') {
+      const winner = (this.sim.result === 'win' && u.side === 'player')
+        || (this.sim.result === 'loss' && u.side === 'ai');
+      if (winner) {
+        const hop = Math.max(0, Math.sin(this.time.now * 0.008 + u.animSeed * 0.01));
+        g.sprite.y = -2 - hop * 6;
+      } else {
+        g.sprite.y = 3;
+        g.sprite.angle = u.dir * -10;
+      }
+      return;
+    }
+    if (u.state === 'walk' && u.reserve) {
+      g.sprite.y = -2 + Math.sin(this.time.now * 0.003 + u.animSeed) * 1.1;
+    } else if (u.state === 'walk') {
+      const hop = Math.abs(Math.sin((u.ageTicks + u.animSeed * 0.001) * 0.48));
+      g.sprite.y = -2 - hop * 2.5;
+    } else if (u.state === 'fight') {
+      const atk = attackProgress(u.cooldown, u.def.attackRate);
+      const strike = inStrikeWindow(atk);
+      g.sprite.x = strike ? u.dir * 8 : -u.dir * 2;
+      g.sprite.y = strike ? 0 : -3;
+      if (atk < STRIKE_START + 0.09 && atk > STRIKE_START) {
+        const kind = u.def.role === 'ranged' ? 'muzzle' : u.def.role === 'tank' ? 'shock' : 'slash';
+        this.spawnAttackFx(u, kind);
+      }
+    }
+  }
+
   private updateUnitGfx(g: UnitGfx, u: UnitState): void {
-    const expectedKey = unitKey(u.def.age, u.def.role, u.side);
-    if (g.sprite.texture.key !== expectedKey && this.textures.exists(expectedKey)) {
-      g.sprite.setTexture(expectedKey);
-      const fit = UNIT_FIT[u.def.age][u.def.role];
-      const targetH = fit.h * PIXEL_SCALE;
-      g.baseScale = g.sprite.height > 0 ? targetH / g.sprite.height : PIXEL_SCALE;
+    const poseKey = this.poseTextureKey(u);
+    if (g.sprite.texture.key !== poseKey && this.textures.exists(poseKey)) {
+      g.sprite.setTexture(poseKey);
+      g.sprite.setOrigin(0.5, 1);
+      const srcH = g.sprite.height || 1;
+      // `_atk` does not contain `_w`. Missing it used to drop the unit back
+      // onto the procedural squash for the exact frame the hit lands.
+      const illustrated = isIllustratedPose(poseKey);
+      const keepScale = g.illustrated && illustrated;
+      g.illustrated = illustrated;
+      if (!keepScale) {
+        const targetH = illustrated
+          ? modelScreenHeight(u.def.role, g.sprite.width || srcH, srcH)
+          : UNIT_FIT[u.def.age][u.def.role].h * PIXEL_SCALE;
+        g.baseScale = targetH / srcH;
+      }
       g.sprite.setScale(g.baseScale);
+      if (g.illustrated) this.textures.get(poseKey).setFilter(Phaser.Textures.FilterMode.LINEAR);
     }
     // The container is scaled during the spawn pop-in, so animated offsets are
     // applied to the children rather than the container.
@@ -1233,8 +1350,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     g.dir = u.dir;
+    g.sprite.setFlipX(u.dir === -1);
 
-    if (this.sim.result !== 'playing') {
+    if (g.illustrated) {
+      this.poseIllustrated(g, u);
+    } else if (this.sim.result !== 'playing') {
       const isWinner = (this.sim.result === 'win' && u.side === 'player') || (this.sim.result === 'loss' && u.side === 'ai');
       if (isWinner) {
         // Joyous victory hopping & cheering
@@ -1364,11 +1484,14 @@ export class GameScene extends Phaser.Scene {
 
     if (this.time.now < g.flashUntilMs) {
       // Time-based flash: exactly 60ms at any render rate, then the art returns.
+      // Illustrated models only flash white — squash turns a face into a smear.
       g.sprite.setTint(0xffffff);
-      g.sprite.x += -u.dir * 4;
-      g.sprite.angle += -u.dir * 6;
-      g.sprite.scaleX *= 1.12;
-      g.sprite.scaleY *= 0.90;
+      if (!g.illustrated) {
+        g.sprite.x += -u.dir * 4;
+        g.sprite.angle += -u.dir * 6;
+        g.sprite.scaleX *= 1.12;
+        g.sprite.scaleY *= 0.90;
+      }
     } else if (isEnemyStasis) {
       // Temporal stasis: icy cyan freeze
       g.sprite.setTint(0x5ce1e6);
@@ -1460,35 +1583,17 @@ export class GameScene extends Phaser.Scene {
   private drainEvents(): void {
     const age = this.sim.player.age;
     const p = paletteFor(age);
+    const hits: HitFlash[] = [];
     for (const ev of this.sim.events) {
       if (ev.kind === 'hit') {
-        const isCrit = ev.isCrit ?? (ev.damage >= 22);
-        const color = isCrit ? 0xffd700 : 0xffd166;
-        const scatterX = (Math.random() - 0.5) * 36;
-        const scatterY = (Math.random() - 0.5) * 16;
-        this.addFloat(ev.x + scatterX, ev.y - 14 + scatterY, isCrit ? `CRIT! -${ev.damage}` : `-${ev.damage}`, color, isCrit ? 36 : 24, isCrit);
-        this.dust.setParticleTint(color);
-        this.dust.emitParticleAt(ev.x, ev.y, isCrit ? 10 : 4);
-        if (isCrit) {
-          audio.sfxCrit();
-          this.hitStopMs = Math.max(this.hitStopMs, 45);
-          this.shake(90, 3.5);
-        } else {
-          audio.sfxMeleeHit();
-          this.hitStopMs = Math.max(this.hitStopMs, 20);
-          this.shake(50, 1.5);
-        }
-        for (const u of this.sim.units) {
-          if (Math.abs(u.x - ev.x) < 10 && u.state !== 'die') {
-            const g = this.unitGfx.get(u.id);
-            if (g) {
-              g.flashUntilMs = this.time.now + HIT_FLASH_MS;
-              // Micro knockback: 2-4px, away from the hit, decaying back.
-              const away = u.side === 'player' ? -1 : 1;
-              g.knock = away * (2 + (ev.damage % 3));
-            }
-          }
-        }
+        // Same crit rule as before: an explicit flag wins, otherwise a heavy
+        // hit reads as a crit. Collected, not drawn, so a clump is one number.
+        hits.push({
+          x: ev.x,
+          y: ev.y,
+          damage: ev.damage,
+          isCrit: ev.isCrit ?? ev.damage >= 22,
+        });
       } else if (ev.kind === 'chronoSurge') {
         const isPlayer = ev.side === 'player';
         this.hud.announce('TIME WARP', isPlayer ? 'CHRONO STASIS ACTIVATED!' : 'ENEMY WARPED TIME!', 1800, 'important');
@@ -1502,7 +1607,8 @@ export class GameScene extends Phaser.Scene {
         this.shake(250, 4);
         audio.sfxWarCry();
         if (isPlayer) voice.play('war_cry');
-        this.cameras.main.flash(180, 255, 180, 50, false);
+        // No full-screen flash. The rally is a speed buff; washing the lane
+        // yellow hid the units that just got faster.
       } else if (ev.kind === 'baseHit') {
         const bx = ev.side === 'player' ? PLAYER_BASE_X : AI_BASE_X;
         const basePalette = paletteFor(ev.side === 'player' ? this.sim.player.age : this.sim.ai.age);
@@ -1591,9 +1697,47 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+    this.presentHits(hits);
     // Simulation events are a one-frame hand-off to the renderer. Keeping them
     // around made every hit, sound and floating number replay on every tick.
     this.sim.events = this.sim.events.filter((event) => event.kind === 'gameover');
+  }
+
+  /**
+   * One label, one hit sound and one camera kick per exchange — not per
+   * damage event. A six-unit melee used to stack six CRIT labels and six
+   * crit stings on the same pixel.
+   */
+  private presentHits(hits: HitFlash[]): void {
+    if (hits.length === 0) return;
+    const groups = coalesceHits(hits);
+    let anyCrit = false;
+    for (const g of groups) {
+      if (g.crits > 0) anyCrit = true;
+      const color = g.crits > 0 ? 0xffd700 : 0xffd166;
+      this.addFloat(g.x, g.y - 14, g.text, color, g.pop ? 36 : 24, g.pop);
+      this.dust.setParticleTint(color);
+      this.dust.emitParticleAt(g.x, g.y, Math.min(12, 3 + g.hits));
+      for (const u of this.sim.units) {
+        if (Math.abs(u.x - g.x) < 18 && u.state !== 'die') {
+          const gfx = this.unitGfx.get(u.id);
+          if (gfx) {
+            gfx.flashUntilMs = this.time.now + HIT_FLASH_MS;
+            const away = u.side === 'player' ? -1 : 1;
+            gfx.knock = away * (2 + (Math.round(g.damage) % 3));
+          }
+        }
+      }
+    }
+    if (anyCrit) {
+      audio.sfxCrit();
+      this.hitStopMs = Math.max(this.hitStopMs, 45);
+      this.shake(90, 3.5);
+    } else {
+      audio.sfxMeleeHit();
+      this.hitStopMs = Math.max(this.hitStopMs, 20);
+      this.shake(50, 1.5);
+    }
   }
 
   private spawnAttackFx(u: UnitState, kind: 'slash' | 'muzzle' | 'shock'): void {

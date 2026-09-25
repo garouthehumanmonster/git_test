@@ -79,7 +79,8 @@ describe('Stage 1 First-Run Coach (tutorial.ts)', () => {
     // Moment 1: Spawn prompt
     const res1 = evaluateTutorialStep(state, ctx1);
     expect(res1.nextStep).toBe('spawn');
-    expect(res1.promptText).toBe('Deploy a Clubman (Key 1)');
+    expect(res1.promptText).toBe('Deploy a Clubber (1) - shreds slingers');
+    expect(res1.promptText).not.toContain('Clubman');
     expect(res1.highlight).toBe('spawn');
 
     // Player spawns unit -> Moment 1 clears
