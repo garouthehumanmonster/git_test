@@ -111,6 +111,20 @@ npm run test:e2e      # real Chromium drives the built bundle (needs Playwright)
 It is portable by environment variable — `E2E_PORT`, `E2E_BROWSER_CHANNEL`,
 `E2E_HEADLESS=0` to watch it run, `E2E_KEEP_SCREENSHOTS=1` to keep frames.
 
+Two Python utilities sit outside the npm scripts:
+
+```bash
+python scripts/play-game.py                       # scripted 25-cycle playthrough -> docs/playtest/
+TIMELINE_WAR_SPRITE_SOURCE=~/art/raw \
+  python scripts/process-sprites.py               # clean up raw generated sprite sheets
+```
+
+`play-game.py` takes `PLAYTEST_PORT`, `PLAYTEST_BROWSER_CHANNEL`,
+`PLAYTEST_HEADLESS=0` and `PLAYTEST_SHOTS_DIR`, and `PLAYTEST_FAIL_ON_ERROR=1`
+turns console errors into a non-zero exit. `process-sprites.py` reads sheets
+that are **not** in the repo, so it refuses to run until
+`TIMELINE_WAR_SPRITE_SOURCE` points at them.
+
 ## Controls
 
 | Key | Action | Description |
@@ -299,8 +313,8 @@ scripts/
 ├─ slice-anim.py               # Cuts walk strips into foot-aligned frames + red-team twin
 ├─ fit-attack.py               # Pins strike poses onto the matching walk canvas
 ├─ fit-death.py                # Pins fallen poses onto the idle canvas
-├─ process-sprites.py          # Cleans up external sprite sheets (local, hard-coded paths)
-├─ play-game.py                # Scripted in-browser playthrough -> docs/playtest (local)
+├─ process-sprites.py          # Cleans up external sprite sheets (needs TIMELINE_WAR_SPRITE_SOURCE)
+├─ play-game.py                # Scripted in-browser playthrough -> docs/playtest
 ├─ lib/                        # PNG encoder, resampler, software rasteriser (SoftGfx)
 └─ e2e-browser-check.py        # Real-browser smoke test (`npm run test:e2e`)
 .github/workflows/ci.yml       # Typecheck, tests, sim, art drift, build, browser E2E
@@ -448,7 +462,8 @@ AI's composition, evolution and upgrade policy, so self-play is a smoke test
 rather than an AI-vs-dummy comparison.
 
 ```bash
-npm run sim 50                       # quick regression check
+npm run sim 50                       # quick regression check (random seed per match)
+npm run sim 25 1                     # same, but reproducible: seeds 1 + i*7919
 npm run sim:baseline                 # 500 matches (100 per stage) -> docs/LAUNCH_BASELINE.md
 npx tsx scripts/sim-profile.ts       # per-tick dump: clash position, base damage, occupancy
 npx tsx scripts/sim-diagnose.ts      # why a packed mid-lane engagement is not breaking through
@@ -457,12 +472,18 @@ npx tsx scripts/sim-diagnose.ts      # why a packed mid-lane engagement is not b
 Only `sim` and `sim:baseline` are wired as npm scripts; the two diagnostics are
 run directly through `tsx` (both take an optional `seed maxTicks`).
 
-A 25-match run on this checkout: **16 wins / 9 losses / 0 draws / 0 timeouts**,
-average 217s, 80% of matches saw at least one base take siege damage, 20% were
-decided by collapse. Results vary by seed — use the shape of the output, not one
-number, and tweak the tables in `src/sim/types.ts` to rebalance.
-[`docs/LAUNCH_BASELINE.md`](docs/LAUNCH_BASELINE.md) holds the last recorded
-500-match gate: 0 timeouts, 73% stage-1 win rate, 278.6s stage-1 median duration.
+**Pass a base seed if you want the number back.** With no second argument each
+match is seeded from `Math.random()`, so two runs of `npm run sim 25` are
+different samples — fine as a timeout smoke test, useless for comparing a
+balance tweak. `npm run sim 25 1` replays the same 25 matches every time.
+
+`npm run sim 25 1` on this checkout, identical across repeated runs: **17 wins /
+8 losses / 0 draws / 0 timeouts**, average 217.0s, 84% of matches saw at least
+one base take siege damage, 16% were decided by the collapse tiebreak. Tweak the
+tables in `src/sim/types.ts` to rebalance, then re-run the same seed to see the
+delta. [`docs/LAUNCH_BASELINE.md`](docs/LAUNCH_BASELINE.md) holds the last
+recorded 500-match gate: 0 timeouts, 73% stage-1 win rate, 278.6s stage-1 median
+duration.
 
 ## Docs index
 
@@ -485,9 +506,6 @@ against `main` with the two CI jobs green, and never commit `node_modules/`,
 
 - `src/audio/voice.ts` declares 12 announcer lines but `public/voice/` ships 10
   MP3s — `war_cry` and `chrono_surge` currently fall back to `speechSynthesis`.
-- `scripts/play-game.py` and `scripts/process-sprites.py` still contain
-  hard-coded absolute Windows paths, so they are local authoring utilities
-  rather than portable tooling. `e2e-browser-check.py` is the portable one.
 - `public/favicon.png` and `public/icons.svg` are not referenced by any code —
   `index.html` favicons `./icon.jpg` — so they are dead weight that can be
   deleted or wired up.

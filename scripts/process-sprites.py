@@ -8,7 +8,21 @@ from PIL import Image
 import numpy as np
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BRAIN_DIR = r"C:\Users\Divyansh\.gemini\antigravity\brain\c751ae30-81a5-4c05-8d99-29c58e8c16e4"
+
+# The raw generated sheets this script cleans up are NOT in the repo — they are
+# authoring intermediates. Point TIMELINE_WAR_SPRITE_SOURCE at the directory
+# holding them. This used to be a hard-coded absolute path under one
+# developer's home directory, which made the script unrunnable for anyone else.
+SOURCE_DIR = os.environ.get("TIMELINE_WAR_SPRITE_SOURCE", "")
+if not SOURCE_DIR:
+    raise SystemExit(
+        "TIMELINE_WAR_SPRITE_SOURCE is not set.\n"
+        "Point it at the directory containing the raw generated sprite sheets "
+        "(the files listed in SOURCES below), then re-run.\n"
+        "Example: TIMELINE_WAR_SPRITE_SOURCE=~/art/raw python scripts/process-sprites.py"
+    )
+if not os.path.isdir(SOURCE_DIR):
+    raise SystemExit(f"TIMELINE_WAR_SPRITE_SOURCE is not a directory: {SOURCE_DIR}")
 UNITS_DIR = os.path.join(ROOT, "public", "atlas", "units")
 BASES_DIR = os.path.join(ROOT, "public", "atlas", "bases")
 os.makedirs(UNITS_DIR, exist_ok=True)
@@ -103,7 +117,7 @@ def recolor_to_crimson(arr: np.ndarray) -> np.ndarray:
 def process_all():
     print("Processing assets into transparent PNGs...")
     for (category, age, role), fn in SOURCES.items():
-        src_path = os.path.join(BRAIN_DIR, fn)
+        src_path = os.path.join(SOURCE_DIR, fn)
         if not os.path.exists(src_path):
             print(f"Warning: {src_path} not found!")
             continue
