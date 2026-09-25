@@ -61,7 +61,7 @@ seed · no backend · playable on the CrazyGames portal.
 - **Pure deterministic simulation** — `src/sim/` has zero Phaser and zero DOM
   imports, runs on a 32-bit Mulberry32 PRNG, and replays byte-for-byte from
   `state.rngState`. Netplay and replay ready.
-- **232 tests, 20 files** — sim rules, golden replays, campaign maths, HUD copy,
+- **235 tests, 20 files** — sim rules, golden replays, campaign maths, HUD copy,
   input buffering, art palette contract, SDK QA, plus a real-browser E2E job that
   drives the production build with real key events.
 - **Built for a portal** — CrazyGames SDK v3 lifecycle and ad hooks with a
@@ -95,7 +95,7 @@ npm ci                # install
 npm run dev           # dev server on http://localhost:5173
 npm run preview       # serve the production build on http://localhost:4173
 
-npm test              # Vitest suite — 232 tests / 20 files
+npm test              # Vitest suite — 235 tests / 20 files
 npm run test:watch    # watch mode
 npm run typecheck     # tsc --noEmit
 npm run build         # tsc && vite build -> dist/
@@ -344,6 +344,11 @@ ink colour — proving the 1px outline survives texture fitting.
 
 ## Simulation & determinism
 
+Every HUD countdown goes through `secondsFromTicks()` / `countdownSeconds()` in
+`src/render/affordance.ts`, which derive from `TICK_MS` rather than an assumed
+tick length — a readout can no longer disagree with the simulation about how
+long a tick is.
+
 `tick(state, intents)` advances the world by `TICK_MS` (50ms) and mutates the
 state in place. The Phaser scene drains an accumulator in `update()` and
 interpolates rendered positions, so rendering can never change a result. The
@@ -408,7 +413,7 @@ completion, evolution comprehension, ad engagement, session depth, star funnel).
 ## Testing
 
 ```
-20 files · 232 tests · ~5s
+20 files · 235 tests · ~5s
 ```
 
 | Area | Files |
@@ -480,9 +485,6 @@ against `main` with the two CI jobs green, and never commit `node_modules/`,
 
 - `src/audio/voice.ts` declares 12 announcer lines but `public/voice/` ships 10
   MP3s — `war_cry` and `chrono_surge` currently fall back to `speechSynthesis`.
-- The Chrono HUD chip counts the warp down with a 100ms/tick constant
-  (`Hud.ts`), so it reads "4s" for a surge the sim runs for 40 ticks (2s). The
-  simulation is correct; only the readout is off.
 - `scripts/play-game.py` and `scripts/process-sprites.py` still contain
   hard-coded absolute Windows paths, so they are local authoring utilities
   rather than portable tooling. `e2e-browser-check.py` is the portable one.

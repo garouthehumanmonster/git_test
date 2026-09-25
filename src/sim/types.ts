@@ -660,7 +660,7 @@ export const AI_EVOLVE_TRIGGER_XP = 0.9; // ai evolves when it hits this fractio
 
 // --- Chrono Surge (Unique Temporal RTS Mechanic) -----------------------------
 export const CHRONO_MAX = 100;
-export const CHRONO_SURGE_DURATION_TICKS = 40; // 4s at 100ms/tick
+export const CHRONO_SURGE_DURATION_TICKS = 40; // 2s at TICK_MS=50
 export const CHRONO_PASSIVE_PER_TICK = 0.35;
 export const CHRONO_PER_KILL = 10;
 

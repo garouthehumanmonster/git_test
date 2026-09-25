@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { claimBootKeys, type KeyEvent } from './inputBuffer';
 import { dispatchKey, type InputActions, type InputModifiers, type KeyPhase } from './inputActions';
-import { nextSpeed } from './affordance';
+import { countdownSeconds, nextSpeed, secondsFromTicks } from './affordance';
 import {
   type Intent,
   type SimState,
@@ -181,7 +181,7 @@ export class GameScene extends Phaser.Scene {
     track({
       name: 'first_action',
       action,
-      elapsedBucket: getElapsedBucket(this.sim.tick * 0.05),
+      elapsedBucket: getElapsedBucket(secondsFromTicks(this.sim.tick)),
     });
   }
 
@@ -654,7 +654,7 @@ export class GameScene extends Phaser.Scene {
     if (!canWarCry(this.sim, 'player')) {
       const p = this.sim.player;
       if (p.gold < 25) this.hud.announce('WAR CRY LOCKED', 'Requires 25 Gold!', 900);
-      else if ((p.rallyCooldown ?? 0) > 0) this.hud.announce('WAR CRY COOLDOWN', `${Math.ceil((p.rallyCooldown ?? 0) * 0.05)}s left`, 900);
+      else if ((p.rallyCooldown ?? 0) > 0) this.hud.announce('WAR CRY COOLDOWN', `${countdownSeconds(p.rallyCooldown ?? 0)}s left`, 900);
       audio.sfxError();
       return;
     }
@@ -883,7 +883,7 @@ export class GameScene extends Phaser.Scene {
         UNIT_DEFS[pAge].tank.cost,
       );
       const playerUnitCount = this.sim.units.filter((u) => u.side === 'player' && u.state !== 'die').length;
-      const elapsedSec = this.sim.tick * 0.05;
+      const elapsedSec = secondsFromTicks(this.sim.tick);
       const eligible = isSupplyDropEligible({
         gold: this.sim.player.gold,
         minUnitCost,
@@ -1003,7 +1003,7 @@ export class GameScene extends Phaser.Scene {
     }
     const outcome: 'win' | 'loss' | 'draw' | 'timeout' =
       summary.result === 'win' || summary.result === 'draw' ? summary.result : 'loss';
-    const elapsedSeconds = (this.sim.tick * TICK_MS) / 1000;
+    const elapsedSeconds = secondsFromTicks(this.sim.tick);
     track({
       name: 'match_end',
       stageId: this.stageId,
