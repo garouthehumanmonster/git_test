@@ -500,12 +500,19 @@ duration.
 
 ## Repository & workflow
 
-`main` is the only integration branch — `git branch -r` shows just
-`origin/main`, and there is no develop or release line to track. Work arrives as
-a short-lived pull request, CI gates it, and it merges into `main`; the game on
-`main` is always the playable build. Keep it that way: land changes through a PR
-against `main` with the two CI jobs green, and never commit `node_modules/`,
-`dist/` or `art/preview/` (all ignored in `.gitignore`).
+`main` is the integration branch — the only one CI gates, and the only one the
+game is played from. There is no develop or release line to track.
+
+Work arrives as a short-lived pull request from an `arena/*` session branch, CI
+gates it, and it merges into `main`; the game on `main` is always the playable
+build. Merged session branches are not deleted automatically, so
+`git ls-remote --heads origin` lists them alongside `main` — they are history,
+not places work happens. (A fresh shallow clone only shows `origin/main`; use
+`git ls-remote --heads origin` to see the real set.)
+
+Keep it that way: land changes through a PR against `main` with both CI jobs
+green, and never commit `node_modules/`, `dist/` or `art/preview/` (all ignored
+in `.gitignore`).
 
 ## Known gaps
 
