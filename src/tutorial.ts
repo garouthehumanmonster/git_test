@@ -98,7 +98,9 @@ export function evaluateTutorialStep(
     } else {
       return {
         nextStep: 'spawn',
-        promptText: 'Deploy a Clubman (Key 1)',
+        // The button says CLUBBER, not Clubman, and the first sentence has to
+        // teach the triangle or the rest of the coach is just hotkeys.
+        promptText: 'Deploy a Clubber (1) - shreds slingers',
         highlight: 'spawn',
       };
     }

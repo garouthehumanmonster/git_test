@@ -360,6 +360,21 @@ export function stageById(id: number): StageDef {
   return STAGES.find((s) => s.id === id) ?? STAGES[0]!;
 }
 
+/**
+ * Stage id handed to the battle scene.
+ *
+ * `0` is the endless skirmish and must stay `0`. An earlier menu rewrite
+ * mapped 0 onto `min(5, unlocked)`, so ENDLESS SKIRMISH started Dawn of Man
+ * (or whichever campaign stage was unlocked) and a run the button promised
+ * was unranked could write campaign stars. Campaign cards pass 1..5 through.
+ * Anything else falls back to stage 1 rather than inventing a stage.
+ */
+export function launchStageId(requested: number): number {
+  if (requested === 0) return 0;
+  if (Number.isInteger(requested) && requested >= 1 && requested <= STAGES.length) return requested;
+  return 1;
+}
+
 /** Ratio of surviving base HP, clamped for the star calculation. */
 export function baseHpRatio(hp: number): number {
   return Math.max(0, Math.min(1, hp / BASE_HP));

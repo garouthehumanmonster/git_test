@@ -30,7 +30,7 @@ import { PIXEL_SCALE } from './palette';
 const SPEED_FLASH_MS = 260;
 
 import {
-  evolveBannerText, speedLabel, subtitleColorHex,
+  counterAdvice, evolveBannerText, laneClearLine, resultsHint, speedLabel, subtitleColorHex,
   type SubtitleKind, type EvolveTarget,
 } from './affordance';
 import { ToastQueue, type ToastPriority } from './toastQueue';
@@ -821,6 +821,22 @@ export class Hud {
       }
     }
 
+    const enemyCounts: Record<UnitRole, number> = { swarm: 0, tank: 0, ranged: 0 };
+    const enemyLabel: Record<UnitRole, string> = { swarm: '', tank: '', ranged: '' };
+    for (const u of state.units) {
+      if (u.side !== 'ai' || u.state === 'die') continue;
+      enemyCounts[u.def.role] += 1;
+      enemyLabel[u.def.role] = u.def.label;
+    }
+    const advice = counterAdvice({
+      counts: enemyCounts,
+      answerLabel: (role) => UNIT_DEFS[p.age][role].label,
+      threatLabel: (role) => enemyLabel[role] || UNIT_DEFS[state.ai.age][role].label,
+    });
+    // The spawn coach owns the Clubber button. After that, pulse whichever
+    // button actually beats what is on the field.
+    const pulseCounter = advice !== null && this.tutorialEvaluation?.highlight !== 'spawn';
+
     const barW = Hud.BAR_W;
     const pRatio = Math.max(0, p.baseHp) / BASE_HP;
     this.playerHpBar.width = barW * pRatio;
@@ -883,9 +899,13 @@ export class Hud {
       btn.cost.setColor(affordable ? colorHex(theme.gold) : colorHex(theme.edge));
       btn.stats.setColor(affordable ? theme.accentText : colorHex(theme.mid));
       btn.accent.setFillStyle(roleAccent[btn.role], affordable ? 1 : 0.35);
-      if (this.tutorialEvaluation?.highlight === 'spawn' && btn.role === 'swarm' && affordable) {
+      const coachSpawn = this.tutorialEvaluation?.highlight === 'spawn' && btn.role === 'swarm' && affordable;
+      const advised = pulseCounter && advice?.role === btn.role;
+      if (coachSpawn || advised) {
         const pulseAlpha = 0.7 + Math.sin(this.scene.time.now / 150) * 0.3;
         btn.bg.setAlpha(pulseAlpha);
+      } else {
+        btn.bg.setAlpha(1);
       }
       this.drawBtnFrame(
         btn.frame,
@@ -1100,19 +1120,20 @@ export class Hud {
             ? 'DRAW - the timeline tore itself apart  |  SPACE to play again'
             : 'DEFEAT - timeline lost  |  SPACE to retry');
     } else if (tutorialText) {
-      setSub('help', `${tutorialText}  [Tap to dismiss]`);
+      setSub('help', `${tutorialText}  [tap this line to skip]`);
     } else if (p.spawnLockTicks > 0) {
       setSub('deploying', 'Deploying...');
     } else if (evolveLine !== null) {
       // Both gates named. Advertising only XP used to invite a press that
       // could not pay, and the refusal was silent.
       setSub('evolve', evolveLine);
+    } else if ((p.rallyTicks ?? 0) > 0) {
+      setSub('warcry', `WAR CRY ACTIVE (+25% SPEED) | ${Math.ceil((p.rallyTicks ?? 0) * 0.05)}s`);
+    } else if (advice) {
+      const massing = enemyCounts.swarm + enemyCounts.tank + enemyCounts.ranged > 8;
+      setSub(massing ? 'alert' : 'counter', massing ? `ALERT — ${advice.line}` : advice.line);
     } else {
-      const enemies = state.units.filter((u) => u.side === 'ai' && u.state !== 'die').length;
-      if ((p.rallyTicks ?? 0) > 0) setSub('warcry', `WAR CRY ACTIVE (+25% SPEED) | ${Math.ceil((p.rallyTicks ?? 0) * 0.05)}s`);
-      else if (enemies > 8) setSub('alert', 'ALERT  |  enemy massing - W War Cry / Q Time Warp');
-      else if (enemies === 0) setSub('push', 'PUSH  |  lane clear - send the swarm');
-      else setSub('help', 'Deploy 1/2/3 | C Call-up | W War Cry | Q Warp | SPC Ult | U/Y upgrade | E evolve | X speed');
+      setSub('push', laneClearLine((role) => UNIT_DEFS[p.age][role].label));
     }
   }
 
@@ -1222,7 +1243,11 @@ export class Hud {
     } else {
       buttons.push(...mkBtn(0, 'RETRY', true, () => this.onRestartRequest?.()));
     }
-    const hint = s.add.text(0, 126, cleared ? 'Press ENTER for the next level' : (canRevive && this.onReviveRequest) ? 'Revive to keep fighting, or RETRY' : 'Press ENTER to retry', {
+    const hint = s.add.text(0, 126, resultsHint({
+      cleared,
+      hasNextStage: payload.hasNextStage,
+      canRevive: canRevive && !!this.onReviveRequest,
+    }), {
       fontFamily: 'monospace', fontSize: '11px', color: colorHex(theme.body),
       stroke: theme.outline, strokeThickness: 3,
     }).setOrigin(0.5);
@@ -1266,16 +1291,19 @@ export class Hud {
   private buildToast(text: string, sub: string): Phaser.GameObjects.Container {
     const s = this.scene;
     const theme = THEMES[this.currentTheme];
-    const c = s.add.container(LANE_WIDTH / 2, 168).setDepth(45);
-    const banner = s.add.rectangle(0, 0, 520, sub ? 68 : 46, theme.banner, 0.9)
+    // Under the 64px top strip, still well above the lane (LANE_TOP is 286).
+    // The old banner sat at y=168, 520x68, and ate the middle of the painted
+    // sky — a War Cry read as a modal over the battlefield.
+    const c = s.add.container(LANE_WIDTH / 2, 96).setDepth(45);
+    const banner = s.add.rectangle(0, 0, 440, sub ? 42 : 30, theme.banner, 0.92)
       .setStrokeStyle(2, theme.borderGlow);
-    const title = s.add.text(0, sub ? -12 : 0, text, {
-      fontFamily: 'monospace', fontSize: '24px', color: theme.accentText,
-      fontStyle: 'bold', stroke: theme.outline, strokeThickness: 5,
+    const title = s.add.text(0, sub ? -8 : 0, text, {
+      fontFamily: 'monospace', fontSize: '18px', color: theme.accentText,
+      fontStyle: 'bold', stroke: theme.outline, strokeThickness: 4,
     }).setOrigin(0.5);
     c.add([banner, title]);
     if (sub) {
-      c.add(s.add.text(0, 16, sub, {
+      c.add(s.add.text(0, 9, sub, {
         fontFamily: 'monospace', fontSize: '13px', color: colorHex(theme.body),
         stroke: theme.outline, strokeThickness: 3,
       }).setOrigin(0.5));
