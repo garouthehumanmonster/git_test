@@ -22,6 +22,7 @@ import {
   ULT_DEFS,
   ULT_MAX,
   CHRONO_MAX,
+  CHRONO_SURGE_DURATION_TICKS,
   UNIT_DEFS,
   reinforceCost,
 } from '../sim/types';
@@ -30,8 +31,8 @@ import { PIXEL_SCALE } from './palette';
 const SPEED_FLASH_MS = 260;
 
 import {
-  counterAdvice, evolveBannerText, laneClearLine, resultsHint, speedLabel, subtitleColorHex,
-  type SubtitleKind, type EvolveTarget,
+  counterAdvice, countdownSeconds, evolveBannerText, laneClearLine, resultsHint, speedLabel,
+  subtitleColorHex, type SubtitleKind, type EvolveTarget,
 } from './affordance';
 import { ToastQueue, type ToastPriority } from './toastQueue';
 import {
@@ -1075,7 +1076,9 @@ export class Hud {
       const charge = p.chronoCharge ?? 0;
       const surgeActive = (state.chronoSurgeTicks ?? 0) > 0;
       const ready = charge >= CHRONO_MAX && !surgeActive;
-      const ratio = surgeActive ? (state.chronoSurgeTicks! / 40) : Math.max(0, Math.min(1, charge / CHRONO_MAX));
+      const ratio = surgeActive
+        ? (state.chronoSurgeTicks! / CHRONO_SURGE_DURATION_TICKS)
+        : Math.max(0, Math.min(1, charge / CHRONO_MAX));
       this.drawBtnFrame(
         btn.frame,
         btn.bg.x - btn.bg.width / 2, btn.bg.y - btn.bg.height / 2,
@@ -1085,7 +1088,7 @@ export class Hud {
       );
       btn.meter.width = Math.max(0.001, btn.meterBg.width * ratio);
       btn.meter.setFillStyle(surgeActive ? 0xffd166 : ready ? 0x38fff0 : 0x16c0b3);
-      btn.statusText.setText(surgeActive ? `${Math.ceil((state.chronoSurgeTicks! * 100) / 1000)}s WARP` : ready ? 'READY!' : `${Math.floor(charge)}%`);
+      btn.statusText.setText(surgeActive ? `${countdownSeconds(state.chronoSurgeTicks!)}s WARP` : ready ? 'READY!' : `${Math.floor(charge)}%`);
       btn.bg.setInteractive({ useHandCursor: ready });
       if (ready || surgeActive) {
         btn.pulse += 0.12;
@@ -1128,7 +1131,7 @@ export class Hud {
       // could not pay, and the refusal was silent.
       setSub('evolve', evolveLine);
     } else if ((p.rallyTicks ?? 0) > 0) {
-      setSub('warcry', `WAR CRY ACTIVE (+25% SPEED) | ${Math.ceil((p.rallyTicks ?? 0) * 0.05)}s`);
+      setSub('warcry', `WAR CRY ACTIVE (+25% SPEED) | ${countdownSeconds(p.rallyTicks ?? 0)}s`);
     } else if (advice) {
       const massing = enemyCounts.swarm + enemyCounts.tank + enemyCounts.ranged > 8;
       setSub(massing ? 'alert' : 'counter', massing ? `ALERT — ${advice.line}` : advice.line);

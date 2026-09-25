@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  counterAdvice, evolveBannerText, evolveBlockedOnGold, laneClearLine, nextSpeed, resultsHint, speedLabel,
+  counterAdvice, countdownSeconds, evolveBannerText, evolveBlockedOnGold, laneClearLine, nextSpeed,
+  resultsHint, secondsFromTicks, speedLabel,
   subtitleColorHex, SUBTITLE_COLORS, type SubtitleKind,
 } from '../../src/render/affordance';
+import {
+  CHRONO_SURGE_DURATION_TICKS, RALLY_COOLDOWN_TICKS, RALLY_DURATION_TICKS, REINFORCE_COOLDOWN_TICKS,
+} from '../../src/sim/types';
 
 describe('speed chip copy', () => {
   it('names the multiplier in effect rather than an arrow', () => {
@@ -182,5 +186,31 @@ describe('results card hint', () => {
       .toContain('RETRY');
     expect(resultsHint({ cleared: false, hasNextStage: true, canRevive: false }))
       .toBe('Press ENTER to retry');
+  });
+});
+
+describe('tick to seconds conversion', () => {
+  it('derives seconds from TICK_MS instead of an assumed tick length', () => {
+    // TICK_MS is 50, so 20 ticks are one second. The old Chrono readout assumed
+    // 100ms and reported double the real duration.
+    expect(secondsFromTicks(20)).toBe(1);
+    expect(secondsFromTicks(40)).toBe(2);
+    expect(secondsFromTicks(0)).toBe(0);
+  });
+
+  it('counts a running effect down to whole seconds, never to zero early', () => {
+    expect(countdownSeconds(40)).toBe(2);
+    expect(countdownSeconds(21)).toBe(2);
+    // One tick left is still an effect the player can see running.
+    expect(countdownSeconds(1)).toBe(1);
+    expect(countdownSeconds(0)).toBe(0);
+    expect(countdownSeconds(-8)).toBe(0);
+  });
+
+  it('matches the sim constants the HUD counts down', () => {
+    expect(countdownSeconds(CHRONO_SURGE_DURATION_TICKS)).toBe(2);
+    expect(countdownSeconds(RALLY_DURATION_TICKS)).toBe(4);
+    expect(countdownSeconds(RALLY_COOLDOWN_TICKS)).toBe(12);
+    expect(countdownSeconds(REINFORCE_COOLDOWN_TICKS)).toBe(15);
   });
 });

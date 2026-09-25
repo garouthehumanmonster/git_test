@@ -10,12 +10,37 @@
  * at 1x or merely offering to leave it.
  */
 
+import { TICK_MS } from '../sim/types';
+
 export type EvolveTarget = 'medieval' | 'modern';
 
 const AGE_LABEL: Record<EvolveTarget, string> = {
   medieval: 'the Medieval Age',
   modern: 'the Modern Age',
 };
+
+/**
+ * Seconds of sim time in a tick count.
+ *
+ * Every HUD countdown used to do this arithmetic inline, and one of them was
+ * written against a 100ms tick: the Chrono chip announced a 4s warp for a surge
+ * the simulation runs for 40 ticks (2s at TICK_MS=50). Deriving it from
+ * `TICK_MS` in one place is what stops that class of drift — the sim and the
+ * readout can no longer disagree about how long a tick is.
+ */
+export function secondsFromTicks(ticks: number): number {
+  return (ticks * TICK_MS) / 1000;
+}
+
+/**
+ * Whole seconds to show on a countdown. Rounds up so the last partial tick
+ * still reads "1s" instead of a chip that says "0s" while the effect is
+ * visibly still running; negative or empty timers read 0.
+ */
+export function countdownSeconds(ticks: number): number {
+  if (!(ticks > 0)) return 0;
+  return Math.ceil(secondsFromTicks(ticks));
+}
 
 /** Speed cycles 1 -> 2 -> 3 -> 1. */
 export function nextSpeed(current: number): number {
